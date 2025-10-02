@@ -2,7 +2,7 @@
 use crate::{
     api::exec::OpContextTr,
     constants::{BASE_FEE_RECIPIENT, L1_FEE_RECIPIENT, OPERATOR_FEE_RECIPIENT},
-    transaction::{priority_tx::{UPGRADE_TRANSACTION_TYPE, L1_PRIORITY_TRANSACTION_TYPE}, OpTransactionError, OpTxTr},
+    transaction::{priority_tx::{UPGRADE_TRANSACTION_TYPE, L1_PRIORITY_TRANSACTION_TYPE}, ZKsyncTxError, OpTxTr},
     OpHaltReason, OpSpecId,
 };
 use revm::{
@@ -27,7 +27,7 @@ use std::boxed::Box;
 
 /// Optimism handler extends the [`Handler`] with Optimism specific logic.
 #[derive(Debug, Clone)]
-pub struct OpHandler<EVM, ERROR, FRAME> {
+pub struct ZKsyncHandler<EVM, ERROR, FRAME> {
     /// Mainnet handler allows us to use functions from the mainnet handler inside optimism handler.
     /// So we dont duplicate the logic
     pub mainnet: MainnetHandler<EVM, ERROR, FRAME>,
@@ -35,7 +35,7 @@ pub struct OpHandler<EVM, ERROR, FRAME> {
     pub _phantom: core::marker::PhantomData<(EVM, ERROR, FRAME)>,
 }
 
-impl<EVM, ERROR, FRAME> OpHandler<EVM, ERROR, FRAME> {
+impl<EVM, ERROR, FRAME> ZKsyncHandler<EVM, ERROR, FRAME> {
     /// Create a new Optimism handler.
     pub fn new() -> Self {
         Self {
@@ -45,7 +45,7 @@ impl<EVM, ERROR, FRAME> OpHandler<EVM, ERROR, FRAME> {
     }
 }
 
-impl<EVM, ERROR, FRAME> Default for OpHandler<EVM, ERROR, FRAME> {
+impl<EVM, ERROR, FRAME> Default for ZKsyncHandler<EVM, ERROR, FRAME> {
     fn default() -> Self {
         Self::new()
     }
@@ -65,10 +65,10 @@ impl<DB, TX> IsTxError for EVMError<DB, TX> {
     }
 }
 
-impl<EVM, ERROR, FRAME> Handler for OpHandler<EVM, ERROR, FRAME>
+impl<EVM, ERROR, FRAME> Handler for ZKsyncHandler<EVM, ERROR, FRAME>
 where
     EVM: EvmTr<Context: OpContextTr, Frame = FRAME>,
-    ERROR: EvmTrError<EVM> + From<OpTransactionError> + FromStringError + IsTxError,
+    ERROR: EvmTrError<EVM> + From<ZKsyncTxError> + FromStringError + IsTxError,
     // TODO `FrameResult` should be a generic trait.
     // TODO `FrameInit` should be a generic.
     FRAME: FrameTr<FrameResult = FrameResult, FrameInit = FrameInit>,
@@ -149,9 +149,7 @@ where
         evm: &mut Self::Evm,
         frame_result: &mut <<Self::Evm as EvmTr>::Frame as FrameTr>::FrameResult,
     ) -> Result<(), Self::Error> {
-        let mut additional_refund = U256::ZERO;
-
-        reimburse_caller(evm.ctx(), frame_result.gas(), additional_refund).map_err(From::from)
+        reimburse_caller(evm.ctx(), frame_result.gas(), U256::ZERO).map_err(From::from)
     }
 
     fn refund(
@@ -196,18 +194,6 @@ where
         // to both the Base Fee Vault as well as the L1 Fee Vault.
         let ctx = evm.ctx();
         let spec = ctx.cfg().spec();
-        let l1_block_info = ctx.chain_mut();
-
-        // let base_fee_amount = U256::from(basefee.saturating_mul(frame_result.gas().used() as u128));
-
-        // // Send fees to their respective recipients
-        // for (recipient, amount) in [
-        //     (L1_FEE_RECIPIENT, l1_cost),
-        //     (BASE_FEE_RECIPIENT, base_fee_amount),
-        //     (OPERATOR_FEE_RECIPIENT, operator_fee_cost),
-        // ] {
-        //     ctx.journal_mut().balance_incr(recipient, amount)?;
-        // }
 
         Ok(())
     }
@@ -241,7 +227,7 @@ where
         let is_deposit = evm.ctx().tx().is_l1_to_l2_tx();
         let output = if error.is_tx_error() && is_deposit {
             let ctx = evm.ctx();
-            let spec = ctx.cfg().spec();
+            // let spec = ctx.cfg().spec();
             let tx = ctx.tx();
             let caller = tx.caller();
             let mint = tx.mint();
@@ -298,14 +284,14 @@ where
     }
 }
 
-impl<EVM, ERROR> InspectorHandler for OpHandler<EVM, ERROR, EthFrame<EthInterpreter>>
+impl<EVM, ERROR> InspectorHandler for ZKsyncHandler<EVM, ERROR, EthFrame<EthInterpreter>>
 where
     EVM: InspectorEvmTr<
         Context: OpContextTr,
         Frame = EthFrame<EthInterpreter>,
         Inspector: Inspector<<<Self as Handler>::Evm as EvmTr>::Context, EthInterpreter>,
     >,
-    ERROR: EvmTrError<EVM> + From<OpTransactionError> + FromStringError + IsTxError,
+    ERROR: EvmTrError<EVM> + From<ZKsyncTxError> + FromStringError + IsTxError,
 {
     type IT = EthInterpreter;
 }

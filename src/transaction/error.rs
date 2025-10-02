@@ -1,4 +1,4 @@
-//! Contains the `[OpTransactionError]` type.
+//! Contains the `[ZKsyncTxError]` type.
 use core::fmt::Display;
 use revm::context_interface::{
     result::{EVMError, InvalidTransaction},
@@ -8,7 +8,7 @@ use revm::context_interface::{
 /// Optimism transaction validation error.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum OpTransactionError {
+pub enum ZKsyncTxError {
     /// Base transaction error.
     Base(InvalidTransaction),
     /// System transactions are not supported post-regolith hardfork.
@@ -43,9 +43,9 @@ pub enum OpTransactionError {
     HaltedDepositPostRegolith,
 }
 
-impl TransactionError for OpTransactionError {}
+impl TransactionError for ZKsyncTxError {}
 
-impl Display for OpTransactionError {
+impl Display for ZKsyncTxError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             Self::Base(error) => error.fmt(f),
@@ -65,16 +65,16 @@ impl Display for OpTransactionError {
     }
 }
 
-impl core::error::Error for OpTransactionError {}
+impl core::error::Error for ZKsyncTxError {}
 
-impl From<InvalidTransaction> for OpTransactionError {
+impl From<InvalidTransaction> for ZKsyncTxError {
     fn from(value: InvalidTransaction) -> Self {
         Self::Base(value)
     }
 }
 
-impl<DBError> From<OpTransactionError> for EVMError<DBError, OpTransactionError> {
-    fn from(value: OpTransactionError) -> Self {
+impl<DBError> From<ZKsyncTxError> for EVMError<DBError, ZKsyncTxError> {
+    fn from(value: ZKsyncTxError) -> Self {
         Self::Transaction(value)
     }
 }
@@ -87,16 +87,16 @@ mod test {
     #[test]
     fn test_display_op_errors() {
         assert_eq!(
-            OpTransactionError::Base(InvalidTransaction::NonceTooHigh { tx: 2, state: 1 })
+            ZKsyncTxError::Base(InvalidTransaction::NonceTooHigh { tx: 2, state: 1 })
                 .to_string(),
             "nonce 2 too high, expected 1"
         );
         assert_eq!(
-            OpTransactionError::DepositSystemTxPostRegolith.to_string(),
+            ZKsyncTxError::DepositSystemTxPostRegolith.to_string(),
             "deposit system transactions post regolith hardfork are not supported"
         );
         assert_eq!(
-            OpTransactionError::HaltedDepositPostRegolith.to_string(),
+            ZKsyncTxError::HaltedDepositPostRegolith.to_string(),
             "deposit transaction halted post-regolith; error will be bubbled up to main return handler"
         )
     }
@@ -106,10 +106,10 @@ mod test {
     fn test_serialize_json_op_transaction_error() {
         let response = r#""DepositSystemTxPostRegolith""#;
 
-        let op_transaction_error: OpTransactionError = serde_json::from_str(response).unwrap();
+        let op_transaction_error: ZKsyncTxError = serde_json::from_str(response).unwrap();
         assert_eq!(
             op_transaction_error,
-            OpTransactionError::DepositSystemTxPostRegolith
+            ZKsyncTxError::DepositSystemTxPostRegolith
         );
     }
 }

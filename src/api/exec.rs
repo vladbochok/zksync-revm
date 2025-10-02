@@ -1,7 +1,7 @@
 //! Implementation of the [`ExecuteEvm`] trait for the [`ZKsyncEvm`].
 use crate::{
-    evm::ZKsyncEvm, handler::OpHandler, transaction::OpTxTr, OpHaltReason, OpSpecId,
-    OpTransactionError,
+    evm::ZKsyncEvm, handler::ZKsyncHandler, transaction::OpTxTr, OpHaltReason, OpSpecId,
+    ZKsyncTxError,
 };
 use revm::{
     context::{result::ExecResultAndState, ContextSetters},
@@ -42,7 +42,7 @@ impl<T> OpContextTr for T where
 }
 
 /// Type alias for the error type of the ZKsyncEvm.
-pub type OpError<CTX> = EVMError<<<CTX as ContextTr>::Db as Database>::Error, OpTransactionError>;
+pub type OpError<CTX> = EVMError<<<CTX as ContextTr>::Db as Database>::Error, ZKsyncTxError>;
 
 impl<CTX, INSP, PRECOMPILE> ExecuteEvm
     for ZKsyncEvm<CTX, INSP, EthInstructions<EthInterpreter, CTX>, PRECOMPILE>
@@ -62,7 +62,7 @@ where
 
     fn transact_one(&mut self, tx: Self::Tx) -> Result<Self::ExecutionResult, Self::Error> {
         self.0.ctx.set_tx(tx);
-        let mut h = OpHandler::<_, _, EthFrame<EthInterpreter>>::new();
+        let mut h = ZKsyncHandler::<_, _, EthFrame<EthInterpreter>>::new();
         h.run(self)
     }
 
@@ -73,7 +73,7 @@ where
     fn replay(
         &mut self,
     ) -> Result<ExecResultAndState<Self::ExecutionResult, Self::State>, Self::Error> {
-        let mut h = OpHandler::<_, _, EthFrame<EthInterpreter>>::new();
+        let mut h = ZKsyncHandler::<_, _, EthFrame<EthInterpreter>>::new();
         h.run(self).map(|result| {
             let state = self.finalize();
             ExecResultAndState::new(result, state)
@@ -107,7 +107,7 @@ where
 
     fn inspect_one_tx(&mut self, tx: Self::Tx) -> Result<Self::ExecutionResult, Self::Error> {
         self.0.ctx.set_tx(tx);
-        let mut h = OpHandler::<_, _, EthFrame<EthInterpreter>>::new();
+        let mut h = ZKsyncHandler::<_, _, EthFrame<EthInterpreter>>::new();
         h.inspect_run(self)
     }
 }
@@ -138,7 +138,7 @@ where
             system_contract_address,
             data,
         ));
-        let mut h = OpHandler::<_, _, EthFrame<EthInterpreter>>::new();
+        let mut h = ZKsyncHandler::<_, _, EthFrame<EthInterpreter>>::new();
         h.run_system_call(self)
     }
 }
@@ -161,7 +161,7 @@ where
             system_contract_address,
             data,
         ));
-        let mut h = OpHandler::<_, _, EthFrame<EthInterpreter>>::new();
+        let mut h = ZKsyncHandler::<_, _, EthFrame<EthInterpreter>>::new();
         h.inspect_run_system_call(self)
     }
 }

@@ -21,4 +21,4 @@ pub use api::{
 pub use evm::ZKsyncEvm;
 pub use result::OpHaltReason;
 pub use spec::*;
-pub use transaction::{error::OpTransactionError, OpTransaction};
+pub use transaction::{error::ZKsyncTxError, ZKsyncTx};

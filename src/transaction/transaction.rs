@@ -71,11 +71,14 @@ impl<TX: Transaction + SystemCallTx> SystemCallTx for ZKsyncTx<TX> {
         system_contract_address: Address,
         data: Bytes,
     ) -> Self {
-        ZKsyncTx::new(TX::new_system_tx_with_caller(
+        let mut tx = ZKsyncTx::new(TX::new_system_tx_with_caller(
             caller,
             system_contract_address,
             data,
-        ))
+        ));
+
+
+        tx
     }
 }
 
@@ -202,7 +205,7 @@ impl ZKsyncTxBuilder {
     /// have full [`ZKsyncTx`] instance.
     ///
     /// If the source hash is not [`B256::ZERO`], set the transaction type to deposit and remove the enveloped transaction.
-    pub fn build_fill(self) -> ZKsyncTx<TxEnv> {
+    pub fn build_fill(mut self) -> ZKsyncTx<TxEnv> {
         let base = self.base.build_fill();
 
         ZKsyncTx {
@@ -213,7 +216,7 @@ impl ZKsyncTxBuilder {
 
     /// Build the [`ZKsyncTx`] instance, return error if the transaction is not valid.
     ///
-    pub fn build(self) -> Result<ZKsyncTx<TxEnv>, OpBuildError> {
+    pub fn build(mut self) -> Result<ZKsyncTx<TxEnv>, OpBuildError> {
         let base = self.base.build()?;
 
         Ok(ZKsyncTx {

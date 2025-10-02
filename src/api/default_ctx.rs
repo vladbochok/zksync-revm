@@ -1,5 +1,5 @@
 //! Contains trait [`DefaultOp`] used to create a default context.
-use crate::{OpSpecId, OpTransaction};
+use crate::{OpSpecId, ZKsyncTx};
 use revm::{
     context::{BlockEnv, CfgEnv, TxEnv, LocalContext},
     database_interface::EmptyDB,
@@ -8,7 +8,7 @@ use revm::{
 
 /// Type alias for the default context type of the ZKsyncEvm.
 pub type OpContext<DB> =
-    Context<BlockEnv, OpTransaction<TxEnv>, CfgEnv<OpSpecId>, DB, Journal<DB>>;
+    Context<BlockEnv, ZKsyncTx<TxEnv>, CfgEnv<OpSpecId>, DB, Journal<DB>>;
 
 /// Trait that allows for a default context to be created.
 pub trait DefaultOp {
@@ -19,7 +19,7 @@ pub trait DefaultOp {
 impl DefaultOp for OpContext<EmptyDB> {
     fn op() -> Self {
         Context::mainnet()
-            .with_tx(OpTransaction::builder().build_fill())
+            .with_tx(ZKsyncTx::builder().build_fill())
             .with_cfg(CfgEnv::new_with_spec(OpSpecId::Initial))
     }
 }
@@ -39,8 +39,8 @@ mod test {
         // convert to optimism context
         let mut evm = ctx.build_op_with_inspector(NoOpInspector {});
         // execute
-        let _ = evm.transact(OpTransaction::builder().build_fill());
+        let _ = evm.transact(ZKsyncTx::builder().build_fill());
         // inspect
-        let _ = evm.inspect_one_tx(OpTransaction::builder().build_fill());
+        let _ = evm.inspect_one_tx(ZKsyncTx::builder().build_fill());
     }
 }
