@@ -96,17 +96,10 @@ where
         let is_l1_to_l2_tx = ctx.tx().is_l1_to_l2_tx();
         let spec = ctx.cfg().spec();
         let block_number = ctx.block().number();
-        let is_balance_check_disabled = ctx.cfg().is_balance_check_disabled();
         let is_eip3607_disabled = ctx.cfg().is_eip3607_disabled();
         let is_nonce_check_disabled = ctx.cfg().is_nonce_check_disabled();
 
-        let mint = if is_l1_to_l2_tx {
-            ctx.tx().mint().unwrap_or_default()
-        } else {
-            U256::ZERO
-        };
-
-        let mut additional_cost = U256::ZERO;
+        let mint = ctx.tx().mint().unwrap_or_default();
 
         // The L1-cost fee is only computed for Optimism non-deposit transactions.
         if !is_l1_to_l2_tx && !ctx.cfg().is_base_fee_check_disabled() {
@@ -136,51 +129,14 @@ where
         // old balance is journaled before mint is incremented.
         let old_balance = caller_account.info.balance;
 
-        // If the transaction is a deposit with a `mint` value, add the mint value
-        // in wei to the caller's balance. This should be persisted to the database
-        // prior to the rest of execution.
-        let mut new_balance = caller_account.info.balance.saturating_add(U256::from(mint));
-
-        // Check if account has enough balance for `gas_limit * max_fee`` and value transfer.
-        // Transfer will be done inside `*_inner` functions.
-        if !is_l1_to_l2_tx && max_balance_spending > new_balance && !is_balance_check_disabled {
-            // skip max balance check for deposit transactions.
-            // this check for deposit was skipped previously in `validate_tx_against_state` function
-            return Err(InvalidTransaction::LackOfFundForMaxFee {
-                fee: Box::new(max_balance_spending),
-                balance: Box::new(new_balance),
-            }
-            .into());
-        }
-
-        let effective_balance_spending = tx
-            .effective_balance_spending(basefee, blob_price)
-            .expect("effective balance is always smaller than max balance so it can't overflow");
-
-        // subtracting max balance spending with value that is going to be deducted later in the call.
-        let gas_balance_spending = effective_balance_spending - tx.value();
-
-        // If the transaction is not a deposit transaction, subtract the L1 data fee from the
-        // caller's balance directly after minting the requested amount of ETH.
-        // Additionally deduct the operator fee from the caller's account.
-        //
-        // In case of deposit additional cost will be zero.
-        let op_gas_balance_spending = gas_balance_spending.saturating_add(additional_cost);
-
-        new_balance = new_balance.saturating_sub(op_gas_balance_spending);
-
-        if is_balance_check_disabled {
-            // Make sure the caller's balance is at least the value of the transaction.
-            // this is not consensus critical, and it is used in testing.
-            new_balance = new_balance.max(tx.value());
-        }
+        let mut new_balance = caller_account.info.balance.saturating_add(U256::from(mint)).max(tx.value());
 
         // Touch account so we know it is changed.
         caller_account.mark_touch();
         caller_account.info.balance = new_balance;
 
         // Bump the nonce for calls. Nonce for CREATE will be bumped in `handle_create`.
-        if tx.kind().is_call() {
+        if !is_l1_to_l2_tx && tx.kind().is_call() {
             caller_account.info.nonce = caller_account.info.nonce.saturating_add(1);
         }
 
@@ -196,63 +152,6 @@ where
         evm: &mut Self::Evm,
         frame_result: &mut <<Self::Evm as EvmTr>::Frame as FrameTr>::FrameResult,
     ) -> Result<(), Self::Error> {
-        let ctx = evm.ctx();
-        let tx = ctx.tx();
-        let is_l1_to_l2_tx = tx.is_l1_to_l2_tx();
-        let tx_gas_limit = tx.gas_limit();
-
-        let instruction_result = frame_result.interpreter_result().result;
-        let gas = frame_result.gas_mut();
-        let remaining = gas.remaining();
-        let refunded = gas.refunded();
-
-        // Spend the gas limit. Gas is reimbursed when the tx returns successfully.
-        *gas = Gas::new_spent(tx_gas_limit);
-
-        if instruction_result.is_ok() {
-            // On Optimism, deposit transactions report gas usage uniquely to other
-            // transactions due to them being pre-paid on L1.
-            //
-            // Hardfork Behavior:
-            // - Bedrock (success path):
-            //   - Deposit transactions (non-system) report their gas limit as the usage.
-            //     No refunds.
-            //   - Deposit transactions (system) report 0 gas used. No refunds.
-            //   - Regular transactions report gas usage as normal.
-            // - Regolith (success path):
-            //   - Deposit transactions (all) report their gas used as normal. Refunds
-            //     enabled.
-            //   - Regular transactions report their gas used as normal.
-            if !is_l1_to_l2_tx {
-                // For regular transactions prior to Regolith and all transactions after
-                // Regolith, gas is reported as normal.
-                gas.erase_cost(remaining);
-                gas.record_refund(refunded);
-            } else if is_l1_to_l2_tx {
-                let tx = ctx.tx();
-                // if tx.is_system_transaction() {
-                //     // System transactions were a special type of deposit transaction in
-                //     // the Bedrock hardfork that did not incur any gas costs.
-                //     gas.erase_cost(tx_gas_limit);
-                // }
-            }
-        } else if instruction_result.is_revert() {
-            // On Optimism, deposit transactions report gas usage uniquely to other
-            // transactions due to them being pre-paid on L1.
-            //
-            // Hardfork Behavior:
-            // - Bedrock (revert path):
-            //   - Deposit transactions (all) report the gas limit as the amount of gas
-            //     used on failure. No refunds.
-            //   - Regular transactions receive a refund on remaining gas as normal.
-            // - Regolith (revert path):
-            //   - Deposit transactions (all) report the actual gas used as the amount of
-            //     gas used on failure. Refunds on remaining gas enabled.
-            //   - Regular transactions receive a refund on remaining gas as normal.
-            if !is_l1_to_l2_tx {
-                gas.erase_cost(remaining);
-            }
-        }
         Ok(())
     }
 
