@@ -1,5 +1,5 @@
 //! Optimism builder trait [`OpBuilder`] used to build [`ZKsyncEvm`].
-use crate::{evm::ZKsyncEvm, precompiles::OpPrecompiles, transaction::OpTxTr, L1BlockInfo, OpSpecId};
+use crate::{evm::ZKsyncEvm, precompiles::ZKsyncPrecompiles, transaction::OpTxTr, L1BlockInfo, OpSpecId};
 use revm::{
     context::Cfg,
     context_interface::{Block, JournalTr},
@@ -11,7 +11,7 @@ use revm::{
 
 /// Type alias for default ZKsyncEvm
 pub type DefaultZKsyncEvm<CTX, INSP = ()> =
-    ZKsyncEvm<CTX, INSP, EthInstructions<EthInterpreter, CTX>, OpPrecompiles>;
+    ZKsyncEvm<CTX, INSP, EthInstructions<EthInterpreter, CTX>, ZKsyncPrecompiles>;
 
 /// Trait that allows for optimism ZKsyncEvm to be built.
 pub trait OpBuilder: Sized {

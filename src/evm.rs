@@ -1,5 +1,5 @@
 //! Contains the `[ZKsyncEvm]` type and its implementation of the execution EVM traits.
-use crate::precompiles::OpPrecompiles;
+use crate::precompiles::ZKsyncPrecompiles;
 use revm::{
     context::{ContextError, ContextSetters, Evm, FrameStack},
     context_interface::ContextTr,
@@ -19,21 +19,21 @@ pub struct ZKsyncEvm<
     CTX,
     INSP,
     I = EthInstructions<EthInterpreter, CTX>,
-    P = OpPrecompiles,
+    P = ZKsyncPrecompiles,
     F = EthFrame<EthInterpreter>,
 >(
     /// Inner EVM type.
     pub Evm<CTX, INSP, I, P, F>,
 );
 
-impl<CTX: ContextTr, INSP> ZKsyncEvm<CTX, INSP, EthInstructions<EthInterpreter, CTX>, OpPrecompiles> {
+impl<CTX: ContextTr, INSP> ZKsyncEvm<CTX, INSP, EthInstructions<EthInterpreter, CTX>, ZKsyncPrecompiles> {
     /// Create a new Optimism EVM.
     pub fn new(ctx: CTX, inspector: INSP) -> Self {
         Self(Evm {
             ctx,
             inspector,
             instruction: EthInstructions::new_mainnet(),
-            precompiles: OpPrecompiles::default(),
+            precompiles: ZKsyncPrecompiles::default(),
             frame_stack: FrameStack::new(),
         })
     }
