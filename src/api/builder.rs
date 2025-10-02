@@ -25,7 +25,7 @@ pub trait OpBuilder: Sized {
     fn build_op_with_inspector<INSP>(self, inspector: INSP) -> DefaultZKsyncEvm<Self::Context, INSP>;
 }
 
-impl<BLOCK, TX, CFG, DB, JOURNAL> OpBuilder for Context<BLOCK, TX, CFG, DB, JOURNAL, LocalContext>
+impl<BLOCK, TX, CFG, DB, JOURNAL> OpBuilder for Context<BLOCK, TX, CFG, DB, JOURNAL>
 where
     BLOCK: Block,
     TX: OpTxTr,
