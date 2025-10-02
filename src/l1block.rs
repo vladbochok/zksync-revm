@@ -162,17 +162,7 @@ impl L1BlockInfo {
 
     /// Calculate the operator fee for the given `gas`.
     fn operator_fee_charge_inner(&self, gas: U256) -> U256 {
-        let operator_fee_scalar = self
-            .operator_fee_scalar
-            .expect("Missing operator fee scalar for isthmus L1 Block");
-        let operator_fee_constant = self
-            .operator_fee_constant
-            .expect("Missing operator fee constant for isthmus L1 Block");
-
-        let product =
-            gas.saturating_mul(operator_fee_scalar) / (U256::from(OPERATOR_FEE_SCALAR_DECIMAL));
-
-        product.saturating_add(operator_fee_constant)
+        U256::ZERO
     }
 
     /// Calculate the operator fee for executing this transaction.

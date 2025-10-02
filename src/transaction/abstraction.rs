@@ -232,10 +232,6 @@ impl OpTransactionBuilder {
 pub enum OpBuildError {
     /// Base transaction build error
     Base(TxEnvBuildError),
-    /// Missing enveloped transaction bytes
-    MissingEnvelopedTxBytes,
-    /// Missing source hash for deposit transaction
-    MissingSourceHashForDeposit,
 }
 
 impl From<TxEnvBuildError> for OpBuildError {
