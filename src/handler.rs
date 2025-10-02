@@ -124,8 +124,6 @@ where
             )?;
         }
 
-        let max_balance_spending = tx.max_balance_spending()?.saturating_add(additional_cost);
-
         // old balance is journaled before mint is incremented.
         let old_balance = caller_account.info.balance;
 
