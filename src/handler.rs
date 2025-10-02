@@ -2,7 +2,7 @@
 use crate::{
     api::exec::OpContextTr,
     constants::{BASE_FEE_RECIPIENT, L1_FEE_RECIPIENT, OPERATOR_FEE_RECIPIENT},
-    transaction::{deposit::DEPOSIT_TRANSACTION_TYPE, OpTransactionError, OpTxTr},
+    transaction::{priority_tx::{UPGRADE_TRANSACTION_TYPE, L1_PRIORITY_TRANSACTION_TYPE}, OpTransactionError, OpTxTr},
     L1BlockInfo, OpHaltReason, OpSpecId,
 };
 use revm::{
@@ -82,15 +82,6 @@ where
         let ctx = evm.ctx();
         let tx = ctx.tx();
         let tx_type = tx.tx_type();
-        if tx_type == DEPOSIT_TRANSACTION_TYPE {
-            // Do not allow for a system transaction to be processed if Regolith is enabled.
-            if tx.is_system_transaction()
-                && evm.ctx().cfg().spec().is_enabled_in(OpSpecId::REGOLITH)
-            {
-                return Err(OpTransactionError::DepositSystemTxPostRegolith.into());
-            }
-            return Ok(());
-        }
         self.mainnet.validate_env(evm)
     }
 
@@ -102,44 +93,32 @@ where
 
         let basefee = ctx.block().basefee() as u128;
         let blob_price = ctx.block().blob_gasprice().unwrap_or_default();
-        let is_deposit = ctx.tx().tx_type() == DEPOSIT_TRANSACTION_TYPE;
+        let is_l1_to_l2_tx = ctx.tx().is_l1_to_l2_tx();
         let spec = ctx.cfg().spec();
         let block_number = ctx.block().number();
         let is_balance_check_disabled = ctx.cfg().is_balance_check_disabled();
         let is_eip3607_disabled = ctx.cfg().is_eip3607_disabled();
         let is_nonce_check_disabled = ctx.cfg().is_nonce_check_disabled();
 
-        let mint = if is_deposit {
+        let mint = if is_l1_to_l2_tx {
             ctx.tx().mint().unwrap_or_default()
         } else {
-            0
+            U256::ZERO
         };
 
         let mut additional_cost = U256::ZERO;
 
         // The L1-cost fee is only computed for Optimism non-deposit transactions.
-        if !is_deposit && !ctx.cfg().is_base_fee_check_disabled() {
+        if !is_l1_to_l2_tx && !ctx.cfg().is_base_fee_check_disabled() {
             // L1 block info is stored in the context for later use.
             // and it will be reloaded from the database if it is not for the current block.
             if ctx.chain().l2_block != block_number {
                 *ctx.chain_mut() = L1BlockInfo::try_fetch(ctx.db_mut(), block_number, spec)?;
             }
 
-            // account for additional cost of l1 fee and operator fee
-            let enveloped_tx = ctx
-                .tx()
-                .enveloped_tx()
-                .expect("all not deposit tx have enveloped tx")
-                .clone();
-
-            // compute L1 cost
-            additional_cost = ctx.chain_mut().calculate_tx_l1_cost(&enveloped_tx, spec);
-
             // compute operator fee
             if spec.is_enabled_in(OpSpecId::ISTHMUS) {
                 let gas_limit = U256::from(ctx.tx().gas_limit());
-                let operator_fee_charge = ctx.chain().operator_fee_charge(&enveloped_tx, gas_limit);
-                additional_cost = additional_cost.saturating_add(operator_fee_charge);
             }
         }
 
@@ -147,7 +126,7 @@ where
 
         let caller_account = journal.load_account_code(tx.caller())?.data;
 
-        if !is_deposit {
+        if !is_l1_to_l2_tx {
             // validates account nonce and code
             validate_account_nonce_and_code(
                 &mut caller_account.info,
@@ -169,7 +148,7 @@ where
 
         // Check if account has enough balance for `gas_limit * max_fee`` and value transfer.
         // Transfer will be done inside `*_inner` functions.
-        if !is_deposit && max_balance_spending > new_balance && !is_balance_check_disabled {
+        if !is_l1_to_l2_tx && max_balance_spending > new_balance && !is_balance_check_disabled {
             // skip max balance check for deposit transactions.
             // this check for deposit was skipped previously in `validate_tx_against_state` function
             return Err(InvalidTransaction::LackOfFundForMaxFee {
@@ -224,7 +203,7 @@ where
     ) -> Result<(), Self::Error> {
         let ctx = evm.ctx();
         let tx = ctx.tx();
-        let is_deposit = tx.tx_type() == DEPOSIT_TRANSACTION_TYPE;
+        let is_l1_to_l2_tx = tx.is_l1_to_l2_tx();
         let tx_gas_limit = tx.gas_limit();
         let is_regolith = ctx.cfg().spec().is_enabled_in(OpSpecId::REGOLITH);
 
@@ -250,18 +229,18 @@ where
             //   - Deposit transactions (all) report their gas used as normal. Refunds
             //     enabled.
             //   - Regular transactions report their gas used as normal.
-            if !is_deposit || is_regolith {
+            if !is_l1_to_l2_tx || is_regolith {
                 // For regular transactions prior to Regolith and all transactions after
                 // Regolith, gas is reported as normal.
                 gas.erase_cost(remaining);
                 gas.record_refund(refunded);
-            } else if is_deposit {
+            } else if is_l1_to_l2_tx {
                 let tx = ctx.tx();
-                if tx.is_system_transaction() {
-                    // System transactions were a special type of deposit transaction in
-                    // the Bedrock hardfork that did not incur any gas costs.
-                    gas.erase_cost(tx_gas_limit);
-                }
+                // if tx.is_system_transaction() {
+                //     // System transactions were a special type of deposit transaction in
+                //     // the Bedrock hardfork that did not incur any gas costs.
+                //     gas.erase_cost(tx_gas_limit);
+                // }
             }
         } else if instruction_result.is_revert() {
             // On Optimism, deposit transactions report gas usage uniquely to other
@@ -276,7 +255,7 @@ where
             //   - Deposit transactions (all) report the actual gas used as the amount of
             //     gas used on failure. Refunds on remaining gas enabled.
             //   - Regular transactions receive a refund on remaining gas as normal.
-            if !is_deposit || is_regolith {
+            if !is_l1_to_l2_tx || is_regolith {
                 gas.erase_cost(remaining);
             }
         }
@@ -290,7 +269,7 @@ where
     ) -> Result<(), Self::Error> {
         let mut additional_refund = U256::ZERO;
 
-        if evm.ctx().tx().tx_type() != DEPOSIT_TRANSACTION_TYPE {
+        if !evm.ctx().tx().is_l1_to_l2_tx() {
             let spec = evm.ctx().cfg().spec();
             additional_refund = evm
                 .ctx()
@@ -309,11 +288,11 @@ where
     ) {
         frame_result.gas_mut().record_refund(eip7702_refund);
 
-        let is_deposit = evm.ctx().tx().tx_type() == DEPOSIT_TRANSACTION_TYPE;
+        let is_l1_to_l2_tx = evm.ctx().tx().is_l1_to_l2_tx();
         let is_regolith = evm.ctx().cfg().spec().is_enabled_in(OpSpecId::REGOLITH);
 
         // Prior to Regolith, deposit transactions did not receive gas refunds.
-        let is_gas_refund_disabled = is_deposit && !is_regolith;
+        let is_gas_refund_disabled = is_l1_to_l2_tx && !is_regolith;
         if !is_gas_refund_disabled {
             frame_result.gas_mut().set_final_refund(
                 evm.ctx()
@@ -330,7 +309,7 @@ where
         evm: &mut Self::Evm,
         frame_result: &mut <<Self::Evm as EvmTr>::Frame as FrameTr>::FrameResult,
     ) -> Result<(), Self::Error> {
-        let is_deposit = evm.ctx().tx().tx_type() == DEPOSIT_TRANSACTION_TYPE;
+        let is_deposit = evm.ctx().tx().is_l1_to_l2_tx();
 
         // Transfer fee to coinbase/beneficiary.
         if is_deposit {
@@ -343,19 +322,12 @@ where
         // If the transaction is not a deposit transaction, fees are paid out
         // to both the Base Fee Vault as well as the L1 Fee Vault.
         let ctx = evm.ctx();
-        let enveloped = ctx.tx().enveloped_tx().cloned();
         let spec = ctx.cfg().spec();
         let l1_block_info = ctx.chain_mut();
 
-        let Some(enveloped_tx) = &enveloped else {
-            return Err(ERROR::from_string(
-                "[OPTIMISM] Failed to load enveloped transaction.".into(),
-            ));
-        };
-
-        let l1_cost = l1_block_info.calculate_tx_l1_cost(enveloped_tx, spec);
+        let l1_cost = Default::default();
         let operator_fee_cost = if spec.is_enabled_in(OpSpecId::ISTHMUS) {
-            l1_block_info.operator_fee_charge(enveloped_tx, U256::from(frame_result.gas().used()))
+            l1_block_info.operator_fee_charge(Default::default(), U256::from(frame_result.gas().used()))
         } else {
             U256::ZERO
         };
@@ -391,7 +363,7 @@ where
             // Post-regolith, if the transaction is a deposit transaction and it halts,
             // we bubble up to the global return handler. The mint value will be persisted
             // and the caller nonce will be incremented there.
-            let is_deposit = evm.ctx().tx().tx_type() == DEPOSIT_TRANSACTION_TYPE;
+            let is_deposit = evm.ctx().tx().is_l1_to_l2_tx();
             if is_deposit && evm.ctx().cfg().spec().is_enabled_in(OpSpecId::REGOLITH) {
                 return Err(ERROR::from(OpTransactionError::HaltedDepositPostRegolith));
             }
@@ -409,14 +381,13 @@ where
         evm: &mut Self::Evm,
         error: Self::Error,
     ) -> Result<ExecutionResult<Self::HaltReason>, Self::Error> {
-        let is_deposit = evm.ctx().tx().tx_type() == DEPOSIT_TRANSACTION_TYPE;
+        let is_deposit = evm.ctx().tx().is_l1_to_l2_tx();
         let output = if error.is_tx_error() && is_deposit {
             let ctx = evm.ctx();
             let spec = ctx.cfg().spec();
             let tx = ctx.tx();
             let caller = tx.caller();
             let mint = tx.mint();
-            let is_system_tx = tx.is_system_transaction();
             let gas_limit = tx.gas_limit();
 
             // discard all changes of this transaction
@@ -453,11 +424,7 @@ where
             // limit of the transaction. pre-regolith, it is the gas limit
             // of the transaction for non system transactions and 0 for system
             // transactions.
-            let gas_used = if spec.is_enabled_in(OpSpecId::REGOLITH) || !is_system_tx {
-                gas_limit
-            } else {
-                0
-            };
+            let gas_used = gas_limit;
             // clear the journal
             Ok(ExecutionResult::Halt {
                 reason: OpHaltReason::FailedDeposit,
@@ -619,7 +586,6 @@ mod tests {
                 OpTransaction::builder()
                     .base(TxEnv::builder().gas_limit(100))
                     .source_hash(B256::from([1u8; 32]))
-                    .is_system_transaction()
                     .build_fill(),
             )
             .modify_cfg_chained(|cfg| cfg.spec = OpSpecId::BEDROCK);
@@ -691,8 +657,6 @@ mod tests {
             .with_tx(
                 OpTransaction::builder()
                     .base(TxEnv::builder().gas_limit(100))
-                    .enveloped_tx(Some(bytes!("FACADE")))
-                    .source_hash(B256::ZERO)
                     .build()
                     .unwrap(),
             );
@@ -812,8 +776,6 @@ mod tests {
             .with_tx(
                 OpTransaction::builder()
                     .base(TxEnv::builder().gas_limit(100))
-                    .source_hash(B256::ZERO)
-                    .enveloped_tx(Some(bytes!("FACADE")))
                     .build()
                     .unwrap(),
             );
@@ -854,7 +816,6 @@ mod tests {
             .with_tx(
                 OpTransaction::builder()
                     .base(TxEnv::builder().gas_limit(10))
-                    .enveloped_tx(Some(bytes!("FACADE")))
                     .build_fill(),
             );
 
@@ -892,10 +853,7 @@ mod tests {
                 l1_base_fee_scalar: U256::from(1_000),
                 ..Default::default()
             })
-            .modify_cfg_chained(|cfg| cfg.spec = OpSpecId::REGOLITH)
-            .modify_tx_chained(|tx| {
-                tx.enveloped_tx = Some(bytes!("FACADE"));
-            });
+            .modify_cfg_chained(|cfg| cfg.spec = OpSpecId::REGOLITH);
 
         // l1block cost is 1048 fee.
         let mut evm = ctx.build_op();
@@ -921,7 +879,6 @@ mod tests {
         let ctx = Context::op()
             .modify_tx_chained(|tx| {
                 tx.deposit.source_hash = B256::from([1u8; 32]);
-                tx.deposit.is_system_transaction = true;
             })
             .modify_cfg_chained(|cfg| cfg.spec = OpSpecId::REGOLITH);
 
@@ -1053,16 +1010,6 @@ mod tests {
                             .gas_priority_fee(None)
                             .caller(SENDER),
                     )
-                    .enveloped_tx(if is_deposit {
-                        None
-                    } else {
-                        Some(bytes!("FACADE"))
-                    })
-                    .source_hash(if is_deposit {
-                        B256::from([1u8; 32])
-                    } else {
-                        B256::ZERO
-                    })
                     .build_fill(),
             )
             .modify_cfg_chained(|cfg| cfg.spec = OpSpecId::ISTHMUS);

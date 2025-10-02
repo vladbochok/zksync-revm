@@ -1,5 +1,5 @@
 //! Optimism transaction abstraction containing the `[OpTxTr]` trait and corresponding `[OpTransaction]` type.
-use super::deposit::{DepositTransactionParts, DEPOSIT_TRANSACTION_TYPE};
+use super::priority_tx::{L1ToL2TransactionParts, UPGRADE_TRANSACTION_TYPE, L1_PRIORITY_TRANSACTION_TYPE};
 use auto_impl::auto_impl;
 use revm::{
     context::{
@@ -15,21 +15,11 @@ use std::vec;
 /// Optimism Transaction trait.
 #[auto_impl(&, &mut, Box, Arc)]
 pub trait OpTxTr: Transaction {
-    /// Enveloped transaction bytes.
-    fn enveloped_tx(&self) -> Option<&Bytes>;
-
-    /// Source hash of the deposit transaction.
-    fn source_hash(&self) -> Option<B256>;
-
     /// Mint of the deposit transaction
-    fn mint(&self) -> Option<u128>;
+    fn mint(&self) -> Option<U256>;
 
-    /// Whether the transaction is a system transaction
-    fn is_system_transaction(&self) -> bool;
-
-    /// Returns `true` if transaction is of type [`DEPOSIT_TRANSACTION_TYPE`].
-    fn is_deposit(&self) -> bool {
-        self.tx_type() == DEPOSIT_TRANSACTION_TYPE
+    fn is_l1_to_l2_tx(&self) -> bool {
+        self.tx_type() == UPGRADE_TRANSACTION_TYPE || self.tx_type() == L1_PRIORITY_TRANSACTION_TYPE
     }
 }
 
@@ -39,14 +29,8 @@ pub trait OpTxTr: Transaction {
 pub struct OpTransaction<T: Transaction> {
     /// Base transaction fields.
     pub base: T,
-    /// An enveloped EIP-2718 typed transaction
-    ///
-    /// This is used to compute the L1 tx cost using the L1 block info, as
-    /// opposed to requiring downstream apps to compute the cost
-    /// externally.
-    pub enveloped_tx: Option<Bytes>,
     /// Deposit transaction parts.
-    pub deposit: DepositTransactionParts,
+    pub deposit: L1ToL2TransactionParts,
 }
 
 impl<T: Transaction> AsRef<T> for OpTransaction<T> {
@@ -60,8 +44,7 @@ impl<T: Transaction> OpTransaction<T> {
     pub fn new(base: T) -> Self {
         Self {
             base,
-            enveloped_tx: None,
-            deposit: DepositTransactionParts::default(),
+            deposit: L1ToL2TransactionParts::default(),
         }
     }
 }
@@ -77,8 +60,7 @@ impl Default for OpTransaction<TxEnv> {
     fn default() -> Self {
         Self {
             base: TxEnv::default(),
-            enveloped_tx: Some(vec![0x00].into()),
-            deposit: DepositTransactionParts::default(),
+            deposit: L1ToL2TransactionParts::default(),
         }
     }
 }
@@ -95,7 +77,6 @@ impl<TX: Transaction + SystemCallTx> SystemCallTx for OpTransaction<TX> {
             data,
         ));
 
-        tx.enveloped_tx = Some(Bytes::default());
 
         tx
     }
@@ -112,12 +93,7 @@ impl<T: Transaction> Transaction for OpTransaction<T> {
         T: 'a;
 
     fn tx_type(&self) -> u8 {
-        // If this is a deposit transaction (has source_hash set), return deposit type
-        if self.deposit.source_hash != B256::ZERO {
-            DEPOSIT_TRANSACTION_TYPE
-        } else {
-            self.base.tx_type()
-        }
+        self.base.tx_type()
     }
 
     fn caller(&self) -> Address {
@@ -173,8 +149,8 @@ impl<T: Transaction> Transaction for OpTransaction<T> {
     }
 
     fn effective_gas_price(&self, base_fee: u128) -> u128 {
-        // Deposit transactions use gas_price directly
-        if self.tx_type() == DEPOSIT_TRANSACTION_TYPE {
+        // L1 to L2 transactions use gas_price directly
+        if self.is_l1_to_l2_tx() {
             return self.gas_price();
         }
         self.base.effective_gas_price(base_fee)
@@ -190,23 +166,8 @@ impl<T: Transaction> Transaction for OpTransaction<T> {
 }
 
 impl<T: Transaction> OpTxTr for OpTransaction<T> {
-    fn enveloped_tx(&self) -> Option<&Bytes> {
-        self.enveloped_tx.as_ref()
-    }
-
-    fn source_hash(&self) -> Option<B256> {
-        if self.tx_type() != DEPOSIT_TRANSACTION_TYPE {
-            return None;
-        }
-        Some(self.deposit.source_hash)
-    }
-
-    fn mint(&self) -> Option<u128> {
+    fn mint(&self) -> Option<U256> {
         self.deposit.mint
-    }
-
-    fn is_system_transaction(&self) -> bool {
-        self.deposit.is_system_transaction
     }
 }
 
@@ -214,8 +175,7 @@ impl<T: Transaction> OpTxTr for OpTransaction<T> {
 #[derive(Default, Debug)]
 pub struct OpTransactionBuilder {
     base: TxEnvBuilder,
-    enveloped_tx: Option<Bytes>,
-    deposit: DepositTransactionParts,
+    deposit: L1ToL2TransactionParts,
 }
 
 impl OpTransactionBuilder {
@@ -223,8 +183,7 @@ impl OpTransactionBuilder {
     pub fn new() -> Self {
         Self {
             base: TxEnvBuilder::new(),
-            enveloped_tx: None,
-            deposit: DepositTransactionParts::default(),
+            deposit: L1ToL2TransactionParts::default(),
         }
     }
 
@@ -234,39 +193,9 @@ impl OpTransactionBuilder {
         self
     }
 
-    /// Set the enveloped transaction bytes.
-    pub fn enveloped_tx(mut self, enveloped_tx: Option<Bytes>) -> Self {
-        self.enveloped_tx = enveloped_tx;
-        self
-    }
-
-    /// Set the source hash of the deposit transaction.
-    pub fn source_hash(mut self, source_hash: B256) -> Self {
-        self.deposit.source_hash = source_hash;
-        self
-    }
-
     /// Set the mint of the deposit transaction.
-    pub fn mint(mut self, mint: u128) -> Self {
+    pub fn mint(mut self, mint: U256) -> Self {
         self.deposit.mint = Some(mint);
-        self
-    }
-
-    /// Set the deposit transaction to be a system transaction.
-    pub fn is_system_transaction(mut self) -> Self {
-        self.deposit.is_system_transaction = true;
-        self
-    }
-
-    /// Set the deposit transaction to not be a system transaction.
-    pub fn not_system_transaction(mut self) -> Self {
-        self.deposit.is_system_transaction = false;
-        self
-    }
-
-    /// Set the deposit transaction to be a deposit transaction.
-    pub fn is_deposit_tx(mut self) -> Self {
-        self.base = self.base.tx_type(Some(DEPOSIT_TRANSACTION_TYPE));
         self
     }
 
@@ -277,30 +206,10 @@ impl OpTransactionBuilder {
     ///
     /// If the source hash is not [`B256::ZERO`], set the transaction type to deposit and remove the enveloped transaction.
     pub fn build_fill(mut self) -> OpTransaction<TxEnv> {
-        let tx_type = self.base.get_tx_type();
-        if tx_type.is_some() {
-            if tx_type == Some(DEPOSIT_TRANSACTION_TYPE) {
-                // source hash is required for deposit transactions
-                if self.deposit.source_hash == B256::ZERO {
-                    self.deposit.source_hash = B256::from([1u8; 32]);
-                }
-            } else {
-                // enveloped is required for non-deposit transactions
-                self.enveloped_tx = Some(vec![0x00].into());
-            }
-        } else if self.deposit.source_hash != B256::ZERO {
-            // if type is not set and source hash is set, set the transaction type to deposit
-            self.base = self.base.tx_type(Some(DEPOSIT_TRANSACTION_TYPE));
-        } else if self.enveloped_tx.is_none() {
-            // if type is not set and source hash is not set, set the enveloped transaction to something.
-            self.enveloped_tx = Some(vec![0x00].into());
-        }
-
         let base = self.base.build_fill();
 
         OpTransaction {
             base,
-            enveloped_tx: self.enveloped_tx,
             deposit: self.deposit,
         }
     }
@@ -308,30 +217,10 @@ impl OpTransactionBuilder {
     /// Build the [`OpTransaction`] instance, return error if the transaction is not valid.
     ///
     pub fn build(mut self) -> Result<OpTransaction<TxEnv>, OpBuildError> {
-        let tx_type = self.base.get_tx_type();
-        if tx_type.is_some() {
-            if Some(DEPOSIT_TRANSACTION_TYPE) == tx_type {
-                // if tx type is deposit, check if source hash is set
-                if self.deposit.source_hash == B256::ZERO {
-                    return Err(OpBuildError::MissingSourceHashForDeposit);
-                }
-            } else if self.enveloped_tx.is_none() {
-                // enveloped is required for non-deposit transactions
-                return Err(OpBuildError::MissingEnvelopedTxBytes);
-            }
-        } else if self.deposit.source_hash != B256::ZERO {
-            // if type is not set and source hash is set, set the transaction type to deposit
-            self.base = self.base.tx_type(Some(DEPOSIT_TRANSACTION_TYPE));
-        } else if self.enveloped_tx.is_none() {
-            // tx is not deposit and enveloped is required
-            return Err(OpBuildError::MissingEnvelopedTxBytes);
-        }
-
         let base = self.base.build()?;
 
         Ok(OpTransaction {
             base,
-            enveloped_tx: self.enveloped_tx,
             deposit: self.deposit,
         })
     }
@@ -372,10 +261,7 @@ mod tests {
 
         let op_tx = OpTransaction::builder()
             .base(base_tx)
-            .enveloped_tx(None)
-            .not_system_transaction()
             .mint(0u128)
-            .source_hash(B256::from([1u8; 32]))
             .build()
             .unwrap();
         // Verify transaction type (deposit transactions should have tx_type based on OpSpecId)
