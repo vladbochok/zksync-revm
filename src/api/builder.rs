@@ -1,5 +1,5 @@
-//! Optimism builder trait [`OpBuilder`] used to build [`OpEvm`].
-use crate::{evm::OpEvm, precompiles::OpPrecompiles, transaction::OpTxTr, L1BlockInfo, OpSpecId};
+//! Optimism builder trait [`OpBuilder`] used to build [`ZKsyncEvm`].
+use crate::{evm::ZKsyncEvm, precompiles::OpPrecompiles, transaction::OpTxTr, L1BlockInfo, OpSpecId};
 use revm::{
     context::Cfg,
     context_interface::{Block, JournalTr},
@@ -9,20 +9,20 @@ use revm::{
     Context, Database,
 };
 
-/// Type alias for default OpEvm
-pub type DefaultOpEvm<CTX, INSP = ()> =
-    OpEvm<CTX, INSP, EthInstructions<EthInterpreter, CTX>, OpPrecompiles>;
+/// Type alias for default ZKsyncEvm
+pub type DefaultZKsyncEvm<CTX, INSP = ()> =
+    ZKsyncEvm<CTX, INSP, EthInstructions<EthInterpreter, CTX>, OpPrecompiles>;
 
-/// Trait that allows for optimism OpEvm to be built.
+/// Trait that allows for optimism ZKsyncEvm to be built.
 pub trait OpBuilder: Sized {
     /// Type of the context.
     type Context;
 
     /// Build the op.
-    fn build_op(self) -> DefaultOpEvm<Self::Context>;
+    fn build_op(self) -> DefaultZKsyncEvm<Self::Context>;
 
     /// Build the op with an inspector.
-    fn build_op_with_inspector<INSP>(self, inspector: INSP) -> DefaultOpEvm<Self::Context, INSP>;
+    fn build_op_with_inspector<INSP>(self, inspector: INSP) -> DefaultZKsyncEvm<Self::Context, INSP>;
 }
 
 impl<BLOCK, TX, CFG, DB, JOURNAL> OpBuilder for Context<BLOCK, TX, CFG, DB, JOURNAL, L1BlockInfo>
@@ -35,11 +35,11 @@ where
 {
     type Context = Self;
 
-    fn build_op(self) -> DefaultOpEvm<Self::Context> {
-        OpEvm::new(self, ())
+    fn build_op(self) -> DefaultZKsyncEvm<Self::Context> {
+        ZKsyncEvm::new(self, ())
     }
 
-    fn build_op_with_inspector<INSP>(self, inspector: INSP) -> DefaultOpEvm<Self::Context, INSP> {
-        OpEvm::new(self, inspector)
+    fn build_op_with_inspector<INSP>(self, inspector: INSP) -> DefaultZKsyncEvm<Self::Context, INSP> {
+        ZKsyncEvm::new(self, inspector)
     }
 }

@@ -1,4 +1,4 @@
-//! Contains the `[OpEvm]` type and its implementation of the execution EVM traits.
+//! Contains the `[ZKsyncEvm]` type and its implementation of the execution EVM traits.
 use crate::precompiles::OpPrecompiles;
 use revm::{
     context::{ContextError, ContextSetters, Evm, FrameStack},
@@ -15,7 +15,7 @@ use revm::{
 
 /// Optimism EVM extends the [`Evm`] type with Optimism specific types and logic.
 #[derive(Debug, Clone)]
-pub struct OpEvm<
+pub struct ZKsyncEvm<
     CTX,
     INSP,
     I = EthInstructions<EthInterpreter, CTX>,
@@ -26,7 +26,7 @@ pub struct OpEvm<
     pub Evm<CTX, INSP, I, P, F>,
 );
 
-impl<CTX: ContextTr, INSP> OpEvm<CTX, INSP, EthInstructions<EthInterpreter, CTX>, OpPrecompiles> {
+impl<CTX: ContextTr, INSP> ZKsyncEvm<CTX, INSP, EthInstructions<EthInterpreter, CTX>, OpPrecompiles> {
     /// Create a new Optimism EVM.
     pub fn new(ctx: CTX, inspector: INSP) -> Self {
         Self(Evm {
@@ -39,15 +39,15 @@ impl<CTX: ContextTr, INSP> OpEvm<CTX, INSP, EthInstructions<EthInterpreter, CTX>
     }
 }
 
-impl<CTX, INSP, I, P> OpEvm<CTX, INSP, I, P> {
+impl<CTX, INSP, I, P> ZKsyncEvm<CTX, INSP, I, P> {
     /// Consumed self and returns a new Evm type with given Inspector.
-    pub fn with_inspector<OINSP>(self, inspector: OINSP) -> OpEvm<CTX, OINSP, I, P> {
-        OpEvm(self.0.with_inspector(inspector))
+    pub fn with_inspector<OINSP>(self, inspector: OINSP) -> ZKsyncEvm<CTX, OINSP, I, P> {
+        ZKsyncEvm(self.0.with_inspector(inspector))
     }
 
     /// Consumes self and returns a new Evm type with given Precompiles.
-    pub fn with_precompiles<OP>(self, precompiles: OP) -> OpEvm<CTX, INSP, I, OP> {
-        OpEvm(self.0.with_precompiles(precompiles))
+    pub fn with_precompiles<OP>(self, precompiles: OP) -> ZKsyncEvm<CTX, INSP, I, OP> {
+        ZKsyncEvm(self.0.with_precompiles(precompiles))
     }
 
     /// Consumes self and returns the inner Inspector.
@@ -56,7 +56,7 @@ impl<CTX, INSP, I, P> OpEvm<CTX, INSP, I, P> {
     }
 }
 
-impl<CTX, INSP, I, P> InspectorEvmTr for OpEvm<CTX, INSP, I, P>
+impl<CTX, INSP, I, P> InspectorEvmTr for ZKsyncEvm<CTX, INSP, I, P>
 where
     CTX: ContextTr<Journal: JournalExt> + ContextSetters,
     I: InstructionProvider<Context = CTX, InterpreterTypes = EthInterpreter>,
@@ -100,7 +100,7 @@ where
     }
 }
 
-impl<CTX, INSP, I, P> EvmTr for OpEvm<CTX, INSP, I, P, EthFrame<EthInterpreter>>
+impl<CTX, INSP, I, P> EvmTr for ZKsyncEvm<CTX, INSP, I, P, EthFrame<EthInterpreter>>
 where
     CTX: ContextTr,
     I: InstructionProvider<Context = CTX, InterpreterTypes = EthInterpreter>,

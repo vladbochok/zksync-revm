@@ -19,7 +19,7 @@ pub use api::{
     builder::OpBuilder,
     default_ctx::{DefaultOp, OpContext},
 };
-pub use evm::OpEvm;
+pub use evm::ZKsyncEvm;
 pub use l1block::L1BlockInfo;
 pub use result::OpHaltReason;
 pub use spec::*;
