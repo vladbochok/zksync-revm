@@ -4,7 +4,7 @@ use crate::{
     OpTransactionError,
 };
 use revm::{
-    context::{result::ExecResultAndState, ContextSetters, LocalContext},
+    context::{result::ExecResultAndState, ContextSetters},
     context_interface::{
         result::{EVMError, ExecutionResult},
         Cfg, ContextTr, Database, JournalTr,
@@ -28,7 +28,6 @@ pub trait OpContextTr:
     Journal: JournalTr<State = EvmState>,
     Tx: OpTxTr,
     Cfg: Cfg<Spec = OpSpecId>,
-    Chain = LocalContext,
 >
 {
 }
@@ -38,7 +37,6 @@ impl<T> OpContextTr for T where
         Journal: JournalTr<State = EvmState>,
         Tx: OpTxTr,
         Cfg: Cfg<Spec = OpSpecId>,
-        Chain = LocalContext,
     >
 {
 }
