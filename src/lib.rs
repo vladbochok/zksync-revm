@@ -9,7 +9,6 @@ pub mod api;
 pub mod constants;
 pub mod evm;
 pub mod handler;
-pub mod l1block;
 pub mod precompiles;
 pub mod result;
 pub mod spec;
@@ -20,7 +19,6 @@ pub use api::{
     default_ctx::{DefaultOp, OpContext},
 };
 pub use evm::ZKsyncEvm;
-pub use l1block::L1BlockInfo;
 pub use result::OpHaltReason;
 pub use spec::*;
 pub use transaction::{error::OpTransactionError, OpTransaction};

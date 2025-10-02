@@ -1,10 +1,10 @@
 //! Implementation of the [`ExecuteEvm`] trait for the [`ZKsyncEvm`].
 use crate::{
-    evm::ZKsyncEvm, handler::OpHandler, transaction::OpTxTr, L1BlockInfo, OpHaltReason, OpSpecId,
+    evm::ZKsyncEvm, handler::OpHandler, transaction::OpTxTr, OpHaltReason, OpSpecId,
     OpTransactionError,
 };
 use revm::{
-    context::{result::ExecResultAndState, ContextSetters},
+    context::{result::ExecResultAndState, ContextSetters, LocalContext},
     context_interface::{
         result::{EVMError, ExecutionResult},
         Cfg, ContextTr, Database, JournalTr,
@@ -28,7 +28,7 @@ pub trait OpContextTr:
     Journal: JournalTr<State = EvmState>,
     Tx: OpTxTr,
     Cfg: Cfg<Spec = OpSpecId>,
-    Chain = L1BlockInfo,
+    Chain = LocalContext,
 >
 {
 }
@@ -38,7 +38,7 @@ impl<T> OpContextTr for T where
         Journal: JournalTr<State = EvmState>,
         Tx: OpTxTr,
         Cfg: Cfg<Spec = OpSpecId>,
-        Chain = L1BlockInfo,
+        Chain = LocalContext,
     >
 {
 }

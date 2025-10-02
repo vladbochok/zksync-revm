@@ -1,14 +1,14 @@
 //! Contains trait [`DefaultOp`] used to create a default context.
-use crate::{L1BlockInfo, OpSpecId, OpTransaction};
+use crate::{OpSpecId, OpTransaction};
 use revm::{
-    context::{BlockEnv, CfgEnv, TxEnv},
+    context::{BlockEnv, CfgEnv, TxEnv, LocalContext},
     database_interface::EmptyDB,
     Context, Journal, MainContext,
 };
 
 /// Type alias for the default context type of the ZKsyncEvm.
 pub type OpContext<DB> =
-    Context<BlockEnv, OpTransaction<TxEnv>, CfgEnv<OpSpecId>, DB, Journal<DB>, L1BlockInfo>;
+    Context<BlockEnv, OpTransaction<TxEnv>, CfgEnv<OpSpecId>, DB, Journal<DB>>;
 
 /// Trait that allows for a default context to be created.
 pub trait DefaultOp {
@@ -21,7 +21,6 @@ impl DefaultOp for OpContext<EmptyDB> {
         Context::mainnet()
             .with_tx(OpTransaction::builder().build_fill())
             .with_cfg(CfgEnv::new_with_spec(OpSpecId::Initial))
-            .with_chain(L1BlockInfo::default())
     }
 }
 

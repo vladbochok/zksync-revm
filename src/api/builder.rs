@@ -1,7 +1,7 @@
 //! Optimism builder trait [`OpBuilder`] used to build [`ZKsyncEvm`].
-use crate::{evm::ZKsyncEvm, precompiles::ZKsyncPrecompiles, transaction::OpTxTr, L1BlockInfo, OpSpecId};
+use crate::{evm::ZKsyncEvm, precompiles::ZKsyncPrecompiles, transaction::OpTxTr, OpSpecId};
 use revm::{
-    context::Cfg,
+    context::{Cfg, LocalContext},
     context_interface::{Block, JournalTr},
     handler::instructions::EthInstructions,
     interpreter::interpreter::EthInterpreter,
@@ -25,7 +25,7 @@ pub trait OpBuilder: Sized {
     fn build_op_with_inspector<INSP>(self, inspector: INSP) -> DefaultZKsyncEvm<Self::Context, INSP>;
 }
 
-impl<BLOCK, TX, CFG, DB, JOURNAL> OpBuilder for Context<BLOCK, TX, CFG, DB, JOURNAL, L1BlockInfo>
+impl<BLOCK, TX, CFG, DB, JOURNAL> OpBuilder for Context<BLOCK, TX, CFG, DB, JOURNAL, LocalContext>
 where
     BLOCK: Block,
     TX: OpTxTr,

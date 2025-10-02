@@ -3,7 +3,7 @@ use crate::{
     api::exec::OpContextTr,
     constants::{BASE_FEE_RECIPIENT, L1_FEE_RECIPIENT, OPERATOR_FEE_RECIPIENT},
     transaction::{priority_tx::{UPGRADE_TRANSACTION_TYPE, L1_PRIORITY_TRANSACTION_TYPE}, OpTransactionError, OpTxTr},
-    L1BlockInfo, OpHaltReason, OpSpecId,
+    OpHaltReason, OpSpecId,
 };
 use revm::{
     context::{result::InvalidTransaction, LocalContextTr},
@@ -101,15 +101,6 @@ where
 
         let mint = ctx.tx().mint().unwrap_or_default();
 
-        // The L1-cost fee is only computed for Optimism non-deposit transactions.
-        if !is_l1_to_l2_tx && !ctx.cfg().is_base_fee_check_disabled() {
-            // L1 block info is stored in the context for later use.
-            // and it will be reloaded from the database if it is not for the current block.
-            if ctx.chain().l2_block != block_number {
-                *ctx.chain_mut() = L1BlockInfo::try_fetch(ctx.db_mut(), block_number, spec)?;
-            }
-        }
-
         let (tx, journal) = ctx.tx_journal_mut();
 
         let caller_account = journal.load_account_code(tx.caller())?.data;
@@ -160,14 +151,6 @@ where
     ) -> Result<(), Self::Error> {
         let mut additional_refund = U256::ZERO;
 
-        if !evm.ctx().tx().is_l1_to_l2_tx() {
-            let spec = evm.ctx().cfg().spec();
-            additional_refund = evm
-                .ctx()
-                .chain()
-                .operator_fee_refund(frame_result.gas(), spec);
-        }
-
         reimburse_caller(evm.ctx(), frame_result.gas(), additional_refund).map_err(From::from)
     }
 
@@ -215,18 +198,16 @@ where
         let spec = ctx.cfg().spec();
         let l1_block_info = ctx.chain_mut();
 
-        let l1_cost = Default::default();
-        let operator_fee_cost = l1_block_info.operator_fee_charge(Default::default(), U256::from(frame_result.gas().used()));
-        let base_fee_amount = U256::from(basefee.saturating_mul(frame_result.gas().used() as u128));
+        // let base_fee_amount = U256::from(basefee.saturating_mul(frame_result.gas().used() as u128));
 
-        // Send fees to their respective recipients
-        for (recipient, amount) in [
-            (L1_FEE_RECIPIENT, l1_cost),
-            (BASE_FEE_RECIPIENT, base_fee_amount),
-            (OPERATOR_FEE_RECIPIENT, operator_fee_cost),
-        ] {
-            ctx.journal_mut().balance_incr(recipient, amount)?;
-        }
+        // // Send fees to their respective recipients
+        // for (recipient, amount) in [
+        //     (L1_FEE_RECIPIENT, l1_cost),
+        //     (BASE_FEE_RECIPIENT, base_fee_amount),
+        //     (OPERATOR_FEE_RECIPIENT, operator_fee_cost),
+        // ] {
+        //     ctx.journal_mut().balance_incr(recipient, amount)?;
+        // }
 
         Ok(())
     }
@@ -246,7 +227,6 @@ where
             post_execution::output(evm.ctx(), frame_result).map_haltreason(OpHaltReason::Base);
 
         evm.ctx().journal_mut().commit_tx();
-        evm.ctx().chain_mut().clear_tx_l1_cost();
         evm.ctx().local_mut().clear();
         evm.frame_stack().clear();
 
@@ -311,7 +291,6 @@ where
             Err(error)
         };
         // do the cleanup
-        evm.ctx().chain_mut().clear_tx_l1_cost();
         evm.ctx().local_mut().clear();
         evm.frame_stack().clear();
 
