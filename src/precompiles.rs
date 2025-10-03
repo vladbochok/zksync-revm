@@ -1,7 +1,8 @@
 //! Contains ZKsync OS specific precompiles.
 use crate::OpSpecId;
+use std::vec;
 use revm::{
-    context::Cfg,
+    context::{Cfg, LocalContextTr},
     context_interface::ContextTr,
     handler::{EthPrecompiles, PrecompileProvider},
     interpreter::{InputsImpl, InterpreterResult},
@@ -13,6 +14,9 @@ use revm::{
 };
 use std::boxed::Box;
 use std::string::String;
+pub mod deployer;
+
+use deployer::{CONTRACT_DEPLOYER_ADDRESS, deployer_precompile_call};
 
 /// Optimism precompile provider
 #[derive(Debug, Clone)]
