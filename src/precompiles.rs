@@ -5,18 +5,21 @@ use revm::{
     context::{Cfg, LocalContextTr},
     context_interface::ContextTr,
     handler::{EthPrecompiles, PrecompileProvider},
-    interpreter::{InputsImpl, InterpreterResult},
+    interpreter::{Gas, InputsImpl, InstructionResult, InterpreterResult},
     precompile::{
         self, bn254, secp256r1, Precompile, PrecompileError, PrecompileId, PrecompileResult,
         Precompiles,
     },
-    primitives::{hardfork::SpecId, Address, OnceLock},
+    primitives::{address, hardfork::SpecId, Address, OnceLock},
 };
 use std::boxed::Box;
 use std::string::String;
 pub mod deployer;
 
 use deployer::{CONTRACT_DEPLOYER_ADDRESS, deployer_precompile_call};
+
+pub const L1_MESSENGER_ADDRESS: Address = address!("0000000000000000000000000000000000008008");
+pub const L2_BASE_TOKEN_ADDRESS: Address =  address!("000000000000000000000000000000000000800a");
 
 /// Optimism precompile provider
 #[derive(Debug, Clone)]
@@ -85,6 +88,11 @@ where
                 revm::interpreter::CallInput::Bytes(bytes) => bytes.0.to_vec(),
             };
             return Ok(Some(deployer_precompile_call(inputs.caller_address, is_static, gas_limit, &input_bytes)));
+        } else if *address == L1_MESSENGER_ADDRESS {
+            // TODO: write the precompile 
+            return Ok(Some(InterpreterResult::new(InstructionResult::Return, [].into(), Gas::new(gas_limit))));
+        } else if *address == L2_BASE_TOKEN_ADDRESS {
+            return Ok(Some(InterpreterResult::new(InstructionResult::Return, [].into(), Gas::new(gas_limit))));
         }
 
         self.inner
