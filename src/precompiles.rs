@@ -69,6 +69,20 @@ where
         is_static: bool,
         gas_limit: u64,
     ) -> Result<Option<Self::Output>, String> {
+        if *address == CONTRACT_DEPLOYER_ADDRESS {   
+            let input_bytes = match &inputs.input {
+                revm::interpreter::CallInput::SharedBuffer(range) => {
+                    if let Some(slice) = context.local().shared_memory_buffer_slice(range.clone()) {
+                        slice.to_vec()
+                    } else {
+                        vec![]
+                    }
+                }
+                revm::interpreter::CallInput::Bytes(bytes) => bytes.0.to_vec(),
+            };
+            return Ok(Some(deployer_precompile_call(inputs.caller_address, is_static, gas_limit, &input_bytes)));
+        }
+
         self.inner
             .run(context, address, inputs, is_static, gas_limit)
     }
