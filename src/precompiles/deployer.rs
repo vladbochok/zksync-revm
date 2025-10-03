@@ -87,6 +87,9 @@ where
             let bytecode = ctx.db_mut().code_by_hash(observable_bytecode_hash).expect(
                 "The bytecode is expected to be pre-loaded for any deployer precompile call",
             );
+            if bytecode.len() <= 10 {
+                panic!("bytecode is small {:?}", address);
+            }
             ctx.journal_mut().set_code(address, bytecode);
             InterpreterResult::new(InstructionResult::Return, [].into(), Gas::new(10))
         }
