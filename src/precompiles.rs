@@ -90,9 +90,9 @@ where
             return Ok(Some(deployer_precompile_call(inputs.caller_address, is_static, gas_limit, &input_bytes)));
         } else if *address == L1_MESSENGER_ADDRESS {
             // TODO: write the precompile 
-            return Ok(Some(InterpreterResult::new(InstructionResult::Return, [].into(), Gas::new(gas_limit))));
+            return Ok(Some(InterpreterResult::new(InstructionResult::Return, [0].repeat(32).into(), Gas::new(1000))));
         } else if *address == L2_BASE_TOKEN_ADDRESS {
-            return Ok(Some(InterpreterResult::new(InstructionResult::Return, [].into(), Gas::new(gas_limit))));
+            return Ok(Some(InterpreterResult::new(InstructionResult::Return, [].into(), Gas::new(1000))));
         }
 
         self.inner
