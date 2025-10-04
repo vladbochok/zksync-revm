@@ -1,12 +1,12 @@
 //! Optimism builder trait [`OpBuilder`] used to build [`ZKsyncEvm`].
-use crate::{evm::ZKsyncEvm, precompiles::ZKsyncPrecompiles, transaction::OpTxTr, OpSpecId};
+use crate::{OpSpecId, evm::ZKsyncEvm, precompiles::ZKsyncPrecompiles, transaction::OpTxTr};
 use revm::{
+    Context, Database,
     context::{Cfg, LocalContext},
     context_interface::{Block, JournalTr},
     handler::instructions::EthInstructions,
     interpreter::interpreter::EthInterpreter,
     state::EvmState,
-    Context, Database,
 };
 
 /// Type alias for default ZKsyncEvm
@@ -22,7 +22,10 @@ pub trait OpBuilder: Sized {
     fn build_op(self) -> DefaultZKsyncEvm<Self::Context>;
 
     /// Build the op with an inspector.
-    fn build_op_with_inspector<INSP>(self, inspector: INSP) -> DefaultZKsyncEvm<Self::Context, INSP>;
+    fn build_op_with_inspector<INSP>(
+        self,
+        inspector: INSP,
+    ) -> DefaultZKsyncEvm<Self::Context, INSP>;
 }
 
 impl<BLOCK, TX, CFG, DB, JOURNAL> OpBuilder for Context<BLOCK, TX, CFG, DB, JOURNAL>
@@ -39,7 +42,10 @@ where
         ZKsyncEvm::new(self, ())
     }
 
-    fn build_op_with_inspector<INSP>(self, inspector: INSP) -> DefaultZKsyncEvm<Self::Context, INSP> {
+    fn build_op_with_inspector<INSP>(
+        self,
+        inspector: INSP,
+    ) -> DefaultZKsyncEvm<Self::Context, INSP> {
         ZKsyncEvm::new(self, inspector)
     }
 }

@@ -1,5 +1,5 @@
 //! Contains Deposit transaction parts.
-use revm::primitives::{B256, U256, Address};
+use revm::primitives::{Address, U256};
 
 /// Upgrade transaction type.
 pub const UPGRADE_TRANSACTION_TYPE: u8 = 0x7E;

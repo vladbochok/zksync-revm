@@ -1,14 +1,13 @@
 //! Contains trait [`DefaultOp`] used to create a default context.
 use crate::{OpSpecId, ZKsyncTx};
 use revm::{
-    context::{BlockEnv, CfgEnv, TxEnv, LocalContext},
-    database_interface::EmptyDB,
     Context, Journal, MainContext,
+    context::{BlockEnv, CfgEnv, TxEnv},
+    database_interface::EmptyDB,
 };
 
 /// Type alias for the default context type of the ZKsyncEvm.
-pub type OpContext<DB> =
-    Context<BlockEnv, ZKsyncTx<TxEnv>, CfgEnv<OpSpecId>, DB, Journal<DB>>;
+pub type OpContext<DB> = Context<BlockEnv, ZKsyncTx<TxEnv>, CfgEnv<OpSpecId>, DB, Journal<DB>>;
 
 /// Trait that allows for a default context to be created.
 pub trait DefaultOp {
@@ -29,8 +28,8 @@ mod test {
     use super::*;
     use crate::api::builder::OpBuilder;
     use revm::{
-        inspector::{InspectEvm, NoOpInspector},
         ExecuteEvm,
+        inspector::{InspectEvm, NoOpInspector},
     };
 
     #[test]

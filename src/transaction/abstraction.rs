@@ -1,16 +1,17 @@
 //! Optimism transaction abstraction containing the `[OpTxTr]` trait and corresponding `[ZKsyncTx]` type.
-use super::priority_tx::{L1ToL2TransactionParts, UPGRADE_TRANSACTION_TYPE, L1_PRIORITY_TRANSACTION_TYPE};
+use super::priority_tx::{
+    L1_PRIORITY_TRANSACTION_TYPE, L1ToL2TransactionParts, UPGRADE_TRANSACTION_TYPE,
+};
 use auto_impl::auto_impl;
 use revm::{
     context::{
-        tx::{TxEnvBuildError, TxEnvBuilder},
         TxEnv,
+        tx::{TxEnvBuildError, TxEnvBuilder},
     },
     context_interface::transaction::Transaction,
     handler::SystemCallTx,
-    primitives::{Address, Bytes, TxKind, B256, U256},
+    primitives::{Address, B256, Bytes, TxKind, U256},
 };
-use std::vec;
 
 /// Optimism Transaction trait.
 #[auto_impl(&, &mut, Box, Arc)]

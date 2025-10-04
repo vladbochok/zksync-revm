@@ -1,7 +1,7 @@
 //! Contains the `[ZKsyncTx]` type and its implementation.
 pub mod abstraction;
-pub mod priority_tx;
 pub mod error;
+pub mod priority_tx;
 
-pub use abstraction::{ZKsyncTx, OpTxTr};
+pub use abstraction::{OpTxTr, ZKsyncTx};
 pub use error::ZKsyncTxError;

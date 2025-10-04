@@ -1,27 +1,26 @@
-//!Handler related to Optimism chain
+//!Handler related to ZKsync OS chain
 use crate::{
+    OpHaltReason,
     api::exec::OpContextTr,
-    constants::{BASE_FEE_RECIPIENT, L1_FEE_RECIPIENT, OPERATOR_FEE_RECIPIENT},
-    transaction::{priority_tx::{UPGRADE_TRANSACTION_TYPE, L1_PRIORITY_TRANSACTION_TYPE}, ZKsyncTxError, OpTxTr},
-    OpHaltReason, OpSpecId,
+    transaction::{OpTxTr, ZKsyncTxError},
 };
 use revm::{
-    context::{result::InvalidTransaction, LocalContextTr},
+    context::{LocalContextTr, result::InvalidTransaction},
     context_interface::{
+        Block, Cfg, ContextTr, JournalTr, Transaction,
         context::ContextError,
         result::{EVMError, ExecutionResult, FromStringError},
-        Block, Cfg, ContextTr, JournalTr, Transaction,
     },
     handler::{
+        EthFrame, EvmTr, FrameResult, Handler, MainnetHandler,
         evm::FrameTr,
         handler::EvmTrError,
         post_execution::{self, reimburse_caller},
         pre_execution::validate_account_nonce_and_code,
-        EthFrame, EvmTr, FrameResult, Handler, MainnetHandler,
     },
     inspector::{Inspector, InspectorEvmTr, InspectorHandler},
-    interpreter::{interpreter::EthInterpreter, interpreter_action::FrameInit, Gas},
-    primitives::{hardfork::SpecId, U256},
+    interpreter::{interpreter::EthInterpreter, interpreter_action::FrameInit},
+    primitives::{U256, hardfork::SpecId},
 };
 use std::boxed::Box;
 
@@ -118,7 +117,11 @@ where
         // old balance is journaled before mint is incremented.
         let old_balance = caller_account.info.balance;
 
-        let mut new_balance = caller_account.info.balance.saturating_add(U256::from(mint)).max(tx.value());
+        let new_balance = caller_account
+            .info
+            .balance
+            .saturating_add(U256::from(mint))
+            .max(tx.value());
 
         // Touch account so we know it is changed.
         caller_account.mark_touch();
@@ -287,10 +290,10 @@ where
 impl<EVM, ERROR> InspectorHandler for ZKsyncHandler<EVM, ERROR, EthFrame<EthInterpreter>>
 where
     EVM: InspectorEvmTr<
-        Context: OpContextTr,
-        Frame = EthFrame<EthInterpreter>,
-        Inspector: Inspector<<<Self as Handler>::Evm as EvmTr>::Context, EthInterpreter>,
-    >,
+            Context: OpContextTr,
+            Frame = EthFrame<EthInterpreter>,
+            Inspector: Inspector<<<Self as Handler>::Evm as EvmTr>::Context, EthInterpreter>,
+        >,
     ERROR: EvmTrError<EVM> + From<ZKsyncTxError> + FromStringError + IsTxError,
 {
     type IT = EthInterpreter;

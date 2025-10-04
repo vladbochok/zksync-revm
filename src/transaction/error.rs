@@ -87,8 +87,7 @@ mod test {
     #[test]
     fn test_display_op_errors() {
         assert_eq!(
-            ZKsyncTxError::Base(InvalidTransaction::NonceTooHigh { tx: 2, state: 1 })
-                .to_string(),
+            ZKsyncTxError::Base(InvalidTransaction::NonceTooHigh { tx: 2, state: 1 }).to_string(),
             "nonce 2 too high, expected 1"
         );
         assert_eq!(

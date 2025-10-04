@@ -1,6 +1,6 @@
 //! Contains the `[OpSpecId]` type and its implementation.
 use core::str::FromStr;
-use revm::primitives::hardfork::{name as eth_name, SpecId, UnknownHardfork};
+use revm::primitives::hardfork::{SpecId, UnknownHardfork};
 
 /// Optimism spec id.
 #[repr(u8)]
@@ -9,7 +9,7 @@ use revm::primitives::hardfork::{name as eth_name, SpecId, UnknownHardfork};
 #[allow(non_camel_case_types)]
 pub enum OpSpecId {
     #[default]
-    Initial
+    Initial,
 }
 
 impl OpSpecId {
