@@ -1,10 +1,10 @@
 use revm::{
-    context::{Cfg, JournalTr}, context_interface::ContextTr, handler::{EthPrecompiles, PrecompileProvider}, interpreter::{Gas, InputsImpl, InstructionResult, InterpreterResult}, precompile::{
-        self, bn254, secp256r1, Precompile, PrecompileError, PrecompileId, PrecompileResult, Precompiles
-    }, primitives::{address, hardfork::SpecId, ruint::aliases::B160, Address, OnceLock, B256, U256}, Database
+    Database,
+    context::{Cfg, JournalTr, Transaction},
+    context_interface::ContextTr,
+    interpreter::{Gas, InstructionResult, InterpreterResult},
+    primitives::{Address, B256, U256, address},
 };
-use core::ops::Add;
-use std::string::String;
 
 use crate::OpSpecId;
 
@@ -14,7 +14,7 @@ pub const SET_EVM_BYTECODE_DETAILS: &[u8] = &[0xf6, 0xec, 0xa0, 0xb0];
 pub const CONTRACT_DEPLOYER_ADDRESS: Address = address!("0000000000000000000000000000000000008006");
 
 pub const L2_GENESIS_UPGRADE_ADDRESS: Address =
-    address!("0000000000000000000000000000000000010001");
+    address!("000000000000000000000000000000000000800f");
 
 pub const MAX_CODE_SIZE: usize = 0x6000;
 
@@ -29,31 +29,41 @@ pub fn deployer_precompile_call<CTX>(
 where
     CTX: ContextTr<Cfg: Cfg<Spec = OpSpecId>>,
 {
+    let error = || {
+        InterpreterResult::new(
+            InstructionResult::Revert,
+            [].into(),
+            Gas::new(gas_limit - 10),
+        )
+    };
+    if ctx.tx().value() != U256::ZERO {
+        return error();
+    }
     if calldata.len() < 4 {
-        return InterpreterResult::new(InstructionResult::Revert, [].into(), Gas::new(10));
+        return error();
     }
     let mut selector = [0u8; 4];
     selector.copy_from_slice(&calldata[..4]);
-    panic!("entry");
     match selector {
         s if s == SET_EVM_BYTECODE_DETAILS => {
             if is_static {
-                return InterpreterResult::new(InstructionResult::Revert, [].into(), Gas::new(10));
+                return error();
             }
+
             // in future we need to handle regular(not genesis) protocol upgrades
             if caller != L2_GENESIS_UPGRADE_ADDRESS {
-                return InterpreterResult::new(InstructionResult::Revert, [].into(), Gas::new(10));
+                return error();
             }
 
             // decoding according to setDeployedCodeEVM(address,bytes)
             calldata = &calldata[4..];
             if calldata.len() < 128 {
-                return InterpreterResult::new(InstructionResult::Revert, [].into(), Gas::new(10));
+                return error();
             }
 
             // check that first 12 bytes in address encoding are zero
             if calldata[0..12].iter().any(|byte| *byte != 0) {
-                return InterpreterResult::new(InstructionResult::Revert, [].into(), Gas::new(10));
+                return error();
             }
             let address = Address::from_slice(&calldata[12..32]);
 
@@ -63,11 +73,7 @@ where
             let bytecode_length: u32 = match U256::from_be_slice(&calldata[64..96]).try_into() {
                 Ok(length) => length,
                 Err(_) => {
-                    return InterpreterResult::new(
-                        InstructionResult::Revert,
-                        [].into(),
-                        Gas::new(10),
-                    );
+                    return error();
                 }
             };
 
@@ -78,20 +84,22 @@ where
             // we are checking the next invariants, just in case
             // EIP-158: reject code of length > 24576.
             if bytecode_length as usize > MAX_CODE_SIZE {
-                return InterpreterResult::new(
-                    InstructionResult::Revert,
-                    [].into(),
-                    Gas::new(gas_limit),
-                );
+                return error();
             }
 
             let bytecode = ctx.db_mut().code_by_hash(observable_bytecode_hash).expect(
                 "The bytecode is expected to be pre-loaded for any deployer precompile call",
             );
-            panic!("bytecode is small {:?}", address);
+            ctx.journal_mut()
+                .warm_account(address)
+                .expect("warm account");
             ctx.journal_mut().set_code(address, bytecode);
-            InterpreterResult::new(InstructionResult::Return, [].into(), Gas::new(10))
+            InterpreterResult::new(
+                InstructionResult::Return,
+                [].into(),
+                Gas::new(gas_limit - 10),
+            )
         }
-        _ => InterpreterResult::new(InstructionResult::Revert, [].into(), Gas::new(10)),
+        _ => error(),
     }
 }
