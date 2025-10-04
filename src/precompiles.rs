@@ -1,25 +1,25 @@
 //! Contains ZKsync OS specific precompiles.
-use crate::OpSpecId;
-use std::vec;
+use crate::{
+    OpSpecId,
+    precompiles::l1_messenger::{L1_MESSENGER_ADDRESS, l1_messenger_precompile_call},
+};
 use revm::{
     context::{Cfg, LocalContextTr},
     context_interface::ContextTr,
     handler::{EthPrecompiles, PrecompileProvider},
     interpreter::{Gas, InputsImpl, InstructionResult, InterpreterResult},
-    precompile::{
-        self, bn254, secp256r1, Precompile, PrecompileError, PrecompileId, PrecompileResult,
-        Precompiles,
-    },
-    primitives::{address, hardfork::SpecId, Address, OnceLock},
+    precompile::Precompiles,
+    primitives::{Address, address, hardfork::SpecId},
 };
 use std::boxed::Box;
 use std::string::String;
+use std::vec;
 pub mod deployer;
+pub mod l1_messenger;
 
 use deployer::{CONTRACT_DEPLOYER_ADDRESS, deployer_precompile_call};
 
-pub const L1_MESSENGER_ADDRESS: Address = address!("0000000000000000000000000000000000008008");
-pub const L2_BASE_TOKEN_ADDRESS: Address =  address!("000000000000000000000000000000000000800a");
+pub const L2_BASE_TOKEN_ADDRESS: Address = address!("000000000000000000000000000000000000800a");
 
 /// Optimism precompile provider
 #[derive(Debug, Clone)]
@@ -76,23 +76,39 @@ where
         is_static: bool,
         gas_limit: u64,
     ) -> Result<Option<Self::Output>, String> {
-        if *address == CONTRACT_DEPLOYER_ADDRESS {   
-            let input_bytes = match &inputs.input {
-                revm::interpreter::CallInput::SharedBuffer(range) => {
-                    if let Some(slice) = context.local().shared_memory_buffer_slice(range.clone()) {
-                        slice.to_vec()
-                    } else {
-                        vec![]
-                    }
+        // Closure to get vector calldata bytes
+        let get_input_bytes = || match &inputs.input {
+            revm::interpreter::CallInput::SharedBuffer(range) => {
+                if let Some(slice) = context.local().shared_memory_buffer_slice(range.clone()) {
+                    slice.to_vec()
+                } else {
+                    vec![]
                 }
-                revm::interpreter::CallInput::Bytes(bytes) => bytes.0.to_vec(),
-            };
-            return Ok(Some(deployer_precompile_call(context, inputs.caller_address, is_static, gas_limit, &input_bytes)));
+            }
+            revm::interpreter::CallInput::Bytes(bytes) => bytes.0.to_vec(),
+        };
+        if *address == CONTRACT_DEPLOYER_ADDRESS {
+            return Ok(Some(deployer_precompile_call(
+                context,
+                inputs.caller_address,
+                is_static,
+                gas_limit,
+                &get_input_bytes(),
+            )));
         } else if *address == L1_MESSENGER_ADDRESS {
-            // TODO: write the precompile 
-            return Ok(Some(InterpreterResult::new(InstructionResult::Return, [0].repeat(32).into(), Gas::new(1000))));
+            return Ok(Some(l1_messenger_precompile_call(
+                context,
+                inputs.caller_address,
+                is_static,
+                gas_limit,
+                &get_input_bytes(),
+            )));
         } else if *address == L2_BASE_TOKEN_ADDRESS {
-            return Ok(Some(InterpreterResult::new(InstructionResult::Return, [].into(), Gas::new(1000))));
+            return Ok(Some(InterpreterResult::new(
+                InstructionResult::Return,
+                [].into(),
+                Gas::new(1000),
+            )));
         }
 
         self.inner
