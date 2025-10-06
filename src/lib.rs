@@ -1,4 +1,4 @@
-//! Optimism-specific constants, types, and helpers.
+//! ZKsync OS specific constants, types, and helpers.
 #![cfg_attr(not(test), warn(unused_crate_dependencies))]
 #![cfg_attr(not(feature = "std"), no_std)]
 
@@ -15,10 +15,10 @@ pub mod spec;
 pub mod transaction;
 
 pub use api::{
-    builder::OpBuilder,
-    default_ctx::{DefaultOp, OpContext},
+    builder::ZkBuilder,
+    default_ctx::{DefaultZk, ZkContext},
 };
 pub use evm::ZKsyncEvm;
-pub use result::OpHaltReason;
+pub use result::ZkHaltReason;
 pub use spec::*;
 pub use transaction::{ZKsyncTx, error::ZKsyncTxError};

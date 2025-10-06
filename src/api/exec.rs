@@ -1,7 +1,7 @@
 //! Implementation of the [`ExecuteEvm`] trait for the [`ZKsyncEvm`].
 use crate::{
-    OpHaltReason, OpSpecId, ZKsyncTxError, evm::ZKsyncEvm, handler::ZKsyncHandler,
-    transaction::OpTxTr,
+    ZKsyncTxError, ZkHaltReason, ZkSpecId, evm::ZKsyncEvm, handler::ZKsyncHandler,
+    transaction::ZkTxTr,
 };
 use revm::{
     DatabaseCommit, ExecuteCommitEvm, ExecuteEvm,
@@ -22,31 +22,31 @@ use revm::{
     state::EvmState,
 };
 
-/// Type alias for Optimism context
-pub trait OpContextTr:
-    ContextTr<Journal: JournalTr<State = EvmState>, Tx: OpTxTr, Cfg: Cfg<Spec = OpSpecId>>
+/// Type alias for ZKsync OS context
+pub trait ZkContextTr:
+    ContextTr<Journal: JournalTr<State = EvmState>, Tx: ZkTxTr, Cfg: Cfg<Spec = ZkSpecId>>
 {
 }
 
-impl<T> OpContextTr for T where
-    T: ContextTr<Journal: JournalTr<State = EvmState>, Tx: OpTxTr, Cfg: Cfg<Spec = OpSpecId>>
+impl<T> ZkContextTr for T where
+    T: ContextTr<Journal: JournalTr<State = EvmState>, Tx: ZkTxTr, Cfg: Cfg<Spec = ZkSpecId>>
 {
 }
 
 /// Type alias for the error type of the ZKsyncEvm.
-pub type OpError<CTX> = EVMError<<<CTX as ContextTr>::Db as Database>::Error, ZKsyncTxError>;
+pub type ZkError<CTX> = EVMError<<<CTX as ContextTr>::Db as Database>::Error, ZKsyncTxError>;
 
 impl<CTX, INSP, PRECOMPILE> ExecuteEvm
     for ZKsyncEvm<CTX, INSP, EthInstructions<EthInterpreter, CTX>, PRECOMPILE>
 where
-    CTX: OpContextTr + ContextSetters,
+    CTX: ZkContextTr + ContextSetters,
     PRECOMPILE: PrecompileProvider<CTX, Output = InterpreterResult>,
 {
     type Tx = <CTX as ContextTr>::Tx;
     type Block = <CTX as ContextTr>::Block;
     type State = EvmState;
-    type Error = OpError<CTX>;
-    type ExecutionResult = ExecutionResult<OpHaltReason>;
+    type Error = ZkError<CTX>;
+    type ExecutionResult = ExecutionResult<ZkHaltReason>;
 
     fn set_block(&mut self, block: Self::Block) {
         self.0.ctx.set_block(block);
@@ -76,7 +76,7 @@ where
 impl<CTX, INSP, PRECOMPILE> ExecuteCommitEvm
     for ZKsyncEvm<CTX, INSP, EthInstructions<EthInterpreter, CTX>, PRECOMPILE>
 where
-    CTX: OpContextTr<Db: DatabaseCommit> + ContextSetters,
+    CTX: ZkContextTr<Db: DatabaseCommit> + ContextSetters,
     PRECOMPILE: PrecompileProvider<CTX, Output = InterpreterResult>,
 {
     fn commit(&mut self, state: Self::State) {
@@ -87,7 +87,7 @@ where
 impl<CTX, INSP, PRECOMPILE> InspectEvm
     for ZKsyncEvm<CTX, INSP, EthInstructions<EthInterpreter, CTX>, PRECOMPILE>
 where
-    CTX: OpContextTr<Journal: JournalExt> + ContextSetters,
+    CTX: ZkContextTr<Journal: JournalExt> + ContextSetters,
     INSP: Inspector<CTX, EthInterpreter>,
     PRECOMPILE: PrecompileProvider<CTX, Output = InterpreterResult>,
 {
@@ -107,7 +107,7 @@ where
 impl<CTX, INSP, PRECOMPILE> InspectCommitEvm
     for ZKsyncEvm<CTX, INSP, EthInstructions<EthInterpreter, CTX>, PRECOMPILE>
 where
-    CTX: OpContextTr<Journal: JournalExt, Db: DatabaseCommit> + ContextSetters,
+    CTX: ZkContextTr<Journal: JournalExt, Db: DatabaseCommit> + ContextSetters,
     INSP: Inspector<CTX, EthInterpreter>,
     PRECOMPILE: PrecompileProvider<CTX, Output = InterpreterResult>,
 {
@@ -116,7 +116,7 @@ where
 impl<CTX, INSP, PRECOMPILE> SystemCallEvm
     for ZKsyncEvm<CTX, INSP, EthInstructions<EthInterpreter, CTX>, PRECOMPILE>
 where
-    CTX: OpContextTr<Tx: SystemCallTx> + ContextSetters,
+    CTX: ZkContextTr<Tx: SystemCallTx> + ContextSetters,
     PRECOMPILE: PrecompileProvider<CTX, Output = InterpreterResult>,
 {
     fn system_call_one_with_caller(
@@ -138,7 +138,7 @@ where
 impl<CTX, INSP, PRECOMPILE> InspectSystemCallEvm
     for ZKsyncEvm<CTX, INSP, EthInstructions<EthInterpreter, CTX>, PRECOMPILE>
 where
-    CTX: OpContextTr<Journal: JournalExt, Tx: SystemCallTx> + ContextSetters,
+    CTX: ZkContextTr<Journal: JournalExt, Tx: SystemCallTx> + ContextSetters,
     INSP: Inspector<CTX, EthInterpreter>,
     PRECOMPILE: PrecompileProvider<CTX, Output = InterpreterResult>,
 {

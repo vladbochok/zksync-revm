@@ -13,7 +13,7 @@ use revm::{
     interpreter::{InterpreterResult, interpreter::EthInterpreter},
 };
 
-/// Optimism EVM extends the [`Evm`] type with Optimism specific types and logic.
+/// ZKsync OS EVM extends the [`Evm`] type with specific types and logic.
 #[derive(Debug, Clone)]
 pub struct ZKsyncEvm<
     CTX,
@@ -29,7 +29,7 @@ pub struct ZKsyncEvm<
 impl<CTX: ContextTr, INSP>
     ZKsyncEvm<CTX, INSP, EthInstructions<EthInterpreter, CTX>, ZKsyncPrecompiles>
 {
-    /// Create a new Optimism EVM.
+    /// Create a new ZKsync OS EVM.
     pub fn new(ctx: CTX, inspector: INSP) -> Self {
         Self(Evm {
             ctx,

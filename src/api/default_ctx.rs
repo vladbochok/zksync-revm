@@ -1,5 +1,5 @@
-//! Contains trait [`DefaultOp`] used to create a default context.
-use crate::{OpSpecId, ZKsyncTx};
+//! Contains trait [`DefaultZk`] used to create a default context.
+use crate::{ZKsyncTx, ZkSpecId};
 use revm::{
     Context, Journal, MainContext,
     context::{BlockEnv, CfgEnv, TxEnv},
@@ -7,36 +7,36 @@ use revm::{
 };
 
 /// Type alias for the default context type of the ZKsyncEvm.
-pub type OpContext<DB> = Context<BlockEnv, ZKsyncTx<TxEnv>, CfgEnv<OpSpecId>, DB, Journal<DB>>;
+pub type ZkContext<DB> = Context<BlockEnv, ZKsyncTx<TxEnv>, CfgEnv<ZkSpecId>, DB, Journal<DB>>;
 
 /// Trait that allows for a default context to be created.
-pub trait DefaultOp {
+pub trait DefaultZk {
     /// Create a default context.
-    fn op() -> OpContext<EmptyDB>;
+    fn default() -> ZkContext<EmptyDB>;
 }
 
-impl DefaultOp for OpContext<EmptyDB> {
-    fn op() -> Self {
+impl DefaultZk for ZkContext<EmptyDB> {
+    fn default() -> Self {
         Context::mainnet()
             .with_tx(ZKsyncTx::builder().build_fill())
-            .with_cfg(CfgEnv::new_with_spec(OpSpecId::Initial))
+            .with_cfg(CfgEnv::new_with_spec(ZkSpecId::Atlas))
     }
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::api::builder::OpBuilder;
+    use crate::api::builder::ZkBuilder;
     use revm::{
         ExecuteEvm,
         inspector::{InspectEvm, NoOpInspector},
     };
 
     #[test]
-    fn default_run_op() {
-        let ctx = Context::op();
-        // convert to optimism context
-        let mut evm = ctx.build_op_with_inspector(NoOpInspector {});
+    fn default_run_zk() {
+        let ctx = Context::default();
+        // convert to ZKsync OS context
+        let mut evm = ctx.build_zk_with_inspector(NoOpInspector {});
         // execute
         let _ = evm.transact(ZKsyncTx::builder().build_fill());
         // inspect

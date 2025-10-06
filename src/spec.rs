@@ -1,52 +1,52 @@
-//! Contains the `[OpSpecId]` type and its implementation.
+//! Contains the `[ZkSpecId]` type and its implementation.
 use core::str::FromStr;
 use revm::primitives::hardfork::{SpecId, UnknownHardfork};
 
-/// Optimism spec id.
+/// ZKsync OS spec id.
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, PartialOrd, Ord, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(non_camel_case_types)]
-pub enum OpSpecId {
+pub enum ZkSpecId {
     #[default]
-    Initial,
+    Atlas,
 }
 
-impl OpSpecId {
-    /// Converts the [`OpSpecId`] into a [`SpecId`].
+impl ZkSpecId {
+    /// Converts the [`ZkSpecId`] into a [`SpecId`].
     pub const fn into_eth_spec(self) -> SpecId {
         match self {
-            Self::Initial => SpecId::PRAGUE, // TODO: Should it be CANCUN?
+            Self::Atlas => SpecId::CANCUN,
         }
     }
 
-    /// Checks if the [`OpSpecId`] is enabled in the other [`OpSpecId`].
-    pub const fn is_enabled_in(self, other: OpSpecId) -> bool {
+    /// Checks if the [`ZkSpecId`] is enabled in the other [`ZkSpecId`].
+    pub const fn is_enabled_in(self, other: ZkSpecId) -> bool {
         other as u8 <= self as u8
     }
 }
 
-impl From<OpSpecId> for SpecId {
-    fn from(spec: OpSpecId) -> Self {
+impl From<ZkSpecId> for SpecId {
+    fn from(spec: ZkSpecId) -> Self {
         spec.into_eth_spec()
     }
 }
 
-impl FromStr for OpSpecId {
+impl FromStr for ZkSpecId {
     type Err = UnknownHardfork;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            name::Initial => Ok(OpSpecId::Initial),
+            name::ATLAS => Ok(ZkSpecId::Atlas),
             _ => Err(UnknownHardfork),
         }
     }
 }
 
-impl From<OpSpecId> for &'static str {
-    fn from(spec_id: OpSpecId) -> Self {
+impl From<ZkSpecId> for &'static str {
+    fn from(spec_id: ZkSpecId) -> Self {
         match spec_id {
-            OpSpecId::Initial => name::Initial,
+            ZkSpecId::Atlas => name::ATLAS,
         }
     }
 }
@@ -54,5 +54,5 @@ impl From<OpSpecId> for &'static str {
 /// String identifiers for ZKsync OS hardforks
 pub mod name {
     /// Initial spec name.
-    pub const Initial: &str = "Initial";
+    pub const ATLAS: &str = "Atlas";
 }

@@ -1,11 +1,11 @@
 //!Handler related to ZKsync OS chain
 use crate::{
-    OpHaltReason,
-    api::exec::OpContextTr,
-    transaction::{OpTxTr, ZKsyncTxError},
+    ZkHaltReason,
+    api::exec::ZkContextTr,
+    transaction::{ZKsyncTxError, ZkTxTr},
 };
 use revm::{
-    context::{LocalContextTr, result::InvalidTransaction},
+    context::LocalContextTr,
     context_interface::{
         Block, Cfg, ContextTr, JournalTr, Transaction,
         context::ContextError,
@@ -22,12 +22,11 @@ use revm::{
     interpreter::{interpreter::EthInterpreter, interpreter_action::FrameInit},
     primitives::{U256, hardfork::SpecId},
 };
-use std::boxed::Box;
 
-/// Optimism handler extends the [`Handler`] with Optimism specific logic.
+/// ZKsync OS handler extends the [`Handler`] with ZKsync OS specific logic.
 #[derive(Debug, Clone)]
 pub struct ZKsyncHandler<EVM, ERROR, FRAME> {
-    /// Mainnet handler allows us to use functions from the mainnet handler inside optimism handler.
+    /// Mainnet handler allows us to use functions from the mainnet handler inside ZKsync OS handler.
     /// So we dont duplicate the logic
     pub mainnet: MainnetHandler<EVM, ERROR, FRAME>,
     /// Phantom data to avoid type inference issues.
@@ -35,7 +34,7 @@ pub struct ZKsyncHandler<EVM, ERROR, FRAME> {
 }
 
 impl<EVM, ERROR, FRAME> ZKsyncHandler<EVM, ERROR, FRAME> {
-    /// Create a new Optimism handler.
+    /// Create a new ZKsync OS handler.
     pub fn new() -> Self {
         Self {
             mainnet: MainnetHandler::default(),
@@ -66,7 +65,7 @@ impl<DB, TX> IsTxError for EVMError<DB, TX> {
 
 impl<EVM, ERROR, FRAME> Handler for ZKsyncHandler<EVM, ERROR, FRAME>
 where
-    EVM: EvmTr<Context: OpContextTr, Frame = FRAME>,
+    EVM: EvmTr<Context: ZkContextTr, Frame = FRAME>,
     ERROR: EvmTrError<EVM> + From<ZKsyncTxError> + FromStringError + IsTxError,
     // TODO `FrameResult` should be a generic trait.
     // TODO `FrameInit` should be a generic.
@@ -74,13 +73,10 @@ where
 {
     type Evm = EVM;
     type Error = ERROR;
-    type HaltReason = OpHaltReason;
+    type HaltReason = ZkHaltReason;
 
     fn validate_env(&self, evm: &mut Self::Evm) -> Result<(), Self::Error> {
-        // Do not perform any extra validation for deposit transactions, they are pre-verified on L1.
-        let ctx = evm.ctx();
-        let tx = ctx.tx();
-        let tx_type = tx.tx_type();
+        // Do not perform any extra validation for L1 -> L2 transactions, they are pre-verified on L1.
         self.mainnet.validate_env(evm)
     }
 
@@ -213,7 +209,7 @@ where
         }
 
         let exec_result =
-            post_execution::output(evm.ctx(), frame_result).map_haltreason(OpHaltReason::Base);
+            post_execution::output(evm.ctx(), frame_result).map_haltreason(ZkHaltReason::Base);
 
         evm.ctx().journal_mut().commit_tx();
         evm.ctx().local_mut().clear();
@@ -273,7 +269,7 @@ where
             let gas_used = gas_limit;
             // clear the journal
             Ok(ExecutionResult::Halt {
-                reason: OpHaltReason::FailedDeposit,
+                reason: ZkHaltReason::FailedDeposit,
                 gas_used,
             })
         } else {
@@ -290,7 +286,7 @@ where
 impl<EVM, ERROR> InspectorHandler for ZKsyncHandler<EVM, ERROR, EthFrame<EthInterpreter>>
 where
     EVM: InspectorEvmTr<
-            Context: OpContextTr,
+            Context: ZkContextTr,
             Frame = EthFrame<EthInterpreter>,
             Inspector: Inspector<<<Self as Handler>::Evm as EvmTr>::Context, EthInterpreter>,
         >,

@@ -1,12 +1,12 @@
 use revm::{
     Database,
-    context::{Cfg, JournalTr, Transaction},
+    context::{Cfg, JournalTr},
     context_interface::ContextTr,
     interpreter::{Gas, InstructionResult, InterpreterResult},
     primitives::{Address, B256, U256, address},
 };
 
-use crate::OpSpecId;
+use crate::ZkSpecId;
 
 // setBytecodeDetailsEVM(address,bytes32,uint32,bytes32) - f6eca0b0
 pub const SET_EVM_BYTECODE_DETAILS: &[u8] = &[0xf6, 0xec, 0xa0, 0xb0];
@@ -24,10 +24,11 @@ pub fn deployer_precompile_call<CTX>(
     caller: Address,
     is_static: bool,
     gas_limit: u64,
+    call_value: U256,
     mut calldata: &[u8],
 ) -> InterpreterResult
 where
-    CTX: ContextTr<Cfg: Cfg<Spec = OpSpecId>>,
+    CTX: ContextTr<Cfg: Cfg<Spec = ZkSpecId>>,
 {
     let error = || {
         InterpreterResult::new(
@@ -36,7 +37,7 @@ where
             Gas::new(gas_limit - 10),
         )
     };
-    if ctx.tx().value() != U256::ZERO {
+    if call_value != U256::ZERO {
         return error();
     }
     if calldata.len() < 4 {

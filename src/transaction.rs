@@ -3,5 +3,5 @@ pub mod abstraction;
 pub mod error;
 pub mod priority_tx;
 
-pub use abstraction::{OpTxTr, ZKsyncTx};
+pub use abstraction::{ZKsyncTx, ZkTxTr};
 pub use error::ZKsyncTxError;

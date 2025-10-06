@@ -1,4 +1,4 @@
-//! Optimism transaction abstraction containing the `[OpTxTr]` trait and corresponding `[ZKsyncTx]` type.
+//! ZKsync OS transaction abstraction containing the `[ZkTxTr]` trait and corresponding `[ZKsyncTx]` type.
 use super::priority_tx::{L1ToL2TransactionParts, UPGRADE_TRANSACTION_TYPE, L1_PRIORITY_TRANSACTION_TYPE};
 use auto_impl::auto_impl;
 use revm::{
@@ -12,9 +12,9 @@ use revm::{
 };
 use std::vec;
 
-/// Optimism Transaction trait.
+/// ZKsync OS Transaction trait.
 #[auto_impl(&, &mut, Box, Arc)]
-pub trait OpTxTr: Transaction {
+pub trait ZkTxTr: Transaction {
     /// Mint of the deposit transaction
     fn mint(&self) -> Option<U256>;
 
@@ -23,7 +23,7 @@ pub trait OpTxTr: Transaction {
     }
 }
 
-/// Optimism transaction.
+/// ZKsync OS transaction.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ZKsyncTx<T: Transaction> {
@@ -40,7 +40,7 @@ impl<T: Transaction> AsRef<T> for ZKsyncTx<T> {
 }
 
 impl<T: Transaction> ZKsyncTx<T> {
-    /// Create a new Optimism transaction.
+    /// Create a new ZKsync OS transaction.
     pub fn new(base: T) -> Self {
         Self {
             base,
@@ -50,7 +50,7 @@ impl<T: Transaction> ZKsyncTx<T> {
 }
 
 impl ZKsyncTx<TxEnv> {
-    /// Create a new Optimism transaction.
+    /// Create a new ZKsync OS transaction.
     pub fn builder() -> ZKsyncTxBuilder {
         ZKsyncTxBuilder::new()
     }
@@ -165,7 +165,7 @@ impl<T: Transaction> Transaction for ZKsyncTx<T> {
     }
 }
 
-impl<T: Transaction> OpTxTr for ZKsyncTx<T> {
+impl<T: Transaction> ZkTxTr for ZKsyncTx<T> {
     fn mint(&self) -> Option<U256> {
         self.deposit.mint
     }
@@ -216,7 +216,7 @@ impl ZKsyncTxBuilder {
 
     /// Build the [`ZKsyncTx`] instance, return error if the transaction is not valid.
     ///
-    pub fn build(mut self) -> Result<ZKsyncTx<TxEnv>, OpBuildError> {
+    pub fn build(mut self) -> Result<ZKsyncTx<TxEnv>, ZkBuilderror> {
         let base = self.base.build()?;
 
         Ok(ZKsyncTx {
@@ -229,14 +229,14 @@ impl ZKsyncTxBuilder {
 /// Error type for building [`TxEnv`]
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum OpBuildError {
+pub enum ZkBuilderror {
     /// Base transaction build error
     Base(TxEnvBuildError),
 }
 
-impl From<TxEnvBuildError> for OpBuildError {
+impl From<TxEnvBuildError> for ZkBuilderror {
     fn from(error: TxEnvBuildError) -> Self {
-        OpBuildError::Base(error)
+        ZkBuilderror::Base(error)
     }
 }
 
@@ -255,18 +255,18 @@ mod tests {
             .gas_price(100)
             .gas_priority_fee(Some(5));
 
-        let op_tx = ZKsyncTx::builder()
+        let zk_tx = ZKsyncTx::builder()
             .base(base_tx)
             .mint(0u128)
             .build()
             .unwrap();
-        // Verify transaction type (deposit transactions should have tx_type based on OpSpecId)
+        // Verify transaction type (deposit transactions should have tx_type based on ZkSpecId)
         // The tx_type is derived from the transaction structure, not set manually
         // Verify common fields access
-        assert_eq!(op_tx.gas_limit(), 10);
-        assert_eq!(op_tx.kind(), revm::primitives::TxKind::Call(Address::ZERO));
+        assert_eq!(zk_tx.gas_limit(), 10);
+        assert_eq!(zk_tx.kind(), revm::primitives::TxKind::Call(Address::ZERO));
         // Verify gas related calculations - deposit transactions use gas_price for effective gas price
-        assert_eq!(op_tx.effective_gas_price(90), 100);
-        assert_eq!(op_tx.max_fee_per_gas(), 100);
+        assert_eq!(zk_tx.effective_gas_price(90), 100);
+        assert_eq!(zk_tx.max_fee_per_gas(), 100);
     }
 }

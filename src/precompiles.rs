@@ -1,45 +1,62 @@
 //! Contains ZKsync OS specific precompiles.
-use crate::{
-    OpSpecId,
-    precompiles::l1_messenger::{L1_MESSENGER_ADDRESS, l1_messenger_precompile_call},
-};
+use crate::ZkSpecId;
 use revm::{
     context::{Cfg, LocalContextTr},
     context_interface::ContextTr,
     handler::{EthPrecompiles, PrecompileProvider},
-    interpreter::{Gas, InputsImpl, InstructionResult, InterpreterResult},
-    precompile::Precompiles,
-    primitives::{Address, address, hardfork::SpecId},
+    interpreter::{InputsImpl, InterpreterResult},
+    precompile::{Precompiles, bn254, hash, identity, modexp, secp256k1},
+    primitives::{Address, OnceLock},
 };
 use std::boxed::Box;
 use std::string::String;
 use std::vec;
 pub mod deployer;
 pub mod l1_messenger;
+pub mod l2_base_token;
 
 use deployer::{CONTRACT_DEPLOYER_ADDRESS, deployer_precompile_call};
+use l1_messenger::{L1_MESSENGER_ADDRESS, l1_messenger_precompile_call};
+use l2_base_token::{L2_BASE_TOKEN_ADDRESS, l2_base_token_precompile_call};
 
-pub const L2_BASE_TOKEN_ADDRESS: Address = address!("000000000000000000000000000000000000800a");
-
-/// Optimism precompile provider
+/// ZKsync OS precompile provider
 #[derive(Debug, Clone)]
 pub struct ZKsyncPrecompiles {
     /// Inner precompile provider is same as Ethereums.
     inner: EthPrecompiles,
     /// Spec id of the precompile provider.
-    spec: OpSpecId,
+    spec: ZkSpecId,
 }
 
 impl ZKsyncPrecompiles {
-    /// Create a new precompile provider with the given OpSpec.
+    /// Create a new precompile provider with the given ZkSpec.
     #[inline]
-    pub fn new_with_spec(spec: OpSpecId) -> Self {
-        // TODO: remove unneded precompiles
-        let precompiles = Precompiles::new(spec.into_eth_spec().into());
+    pub fn new_with_spec(spec: ZkSpecId) -> Self {
+        let precompiles = match spec {
+            ZkSpecId::Atlas => {
+                static INSTANCE: OnceLock<Precompiles> = OnceLock::new();
+                INSTANCE.get_or_init(|| {
+                    let mut precompiles = Precompiles::default();
+                    // Generating the list instead of using default Cancun fork,
+                    // because we need to remove Blake2 and Point Evaluation
+                    precompiles.extend([
+                        secp256k1::ECRECOVER,
+                        hash::SHA256,
+                        hash::RIPEMD160,
+                        identity::FUN,
+                        modexp::BERLIN,
+                        bn254::add::ISTANBUL,
+                        bn254::mul::ISTANBUL,
+                        bn254::pair::ISTANBUL,
+                    ]);
+                    precompiles
+                })
+            }
+        };
         Self {
             inner: EthPrecompiles {
                 precompiles,
-                spec: SpecId::default(),
+                spec: spec.into_eth_spec(),
             },
             spec,
         }
@@ -54,7 +71,7 @@ impl ZKsyncPrecompiles {
 
 impl<CTX> PrecompileProvider<CTX> for ZKsyncPrecompiles
 where
-    CTX: ContextTr<Cfg: Cfg<Spec = OpSpecId>>,
+    CTX: ContextTr<Cfg: Cfg<Spec = ZkSpecId>>,
 {
     type Output = InterpreterResult;
 
@@ -93,6 +110,7 @@ where
                 inputs.caller_address,
                 is_static,
                 gas_limit,
+                inputs.call_value,
                 &get_input_bytes(),
             )));
         } else if *address == L1_MESSENGER_ADDRESS {
@@ -101,13 +119,17 @@ where
                 inputs.caller_address,
                 is_static,
                 gas_limit,
+                inputs.call_value,
                 &get_input_bytes(),
             )));
         } else if *address == L2_BASE_TOKEN_ADDRESS {
-            return Ok(Some(InterpreterResult::new(
-                InstructionResult::Return,
-                [].into(),
-                Gas::new(1000),
+            return Ok(Some(l2_base_token_precompile_call(
+                context,
+                inputs.caller_address,
+                is_static,
+                gas_limit,
+                inputs.call_value,
+                &get_input_bytes(),
             )));
         }
 
@@ -128,6 +150,6 @@ where
 
 impl Default for ZKsyncPrecompiles {
     fn default() -> Self {
-        Self::new_with_spec(OpSpecId::Initial)
+        Self::new_with_spec(ZkSpecId::Atlas)
     }
 }

@@ -1,5 +1,5 @@
 use revm::{
-    context::{Cfg, JournalTr, Transaction},
+    context::{Cfg, JournalTr},
     context_interface::ContextTr,
     interpreter::{
         Gas, InstructionResult, InterpreterResult,
@@ -10,7 +10,7 @@ use revm::{
 use std::vec;
 use std::vec::Vec;
 
-use crate::OpSpecId;
+use crate::ZkSpecId;
 
 // sendToL1(bytes) - 62f84b24
 pub const SEND_TO_L1_SELECTOR: &[u8] = &[0x62, 0xf8, 0x4b, 0x24];
@@ -29,16 +29,17 @@ fn b160_to_b256(addr: Address) -> B256 {
     B256::from(out)
 }
 
-/// Run the deployer precompile.
+/// Run the L1 messenger precompile.
 pub fn l1_messenger_precompile_call<CTX>(
     ctx: &mut CTX,
     caller: Address,
     is_static: bool,
     gas_limit: u64,
+    call_value: U256,
     mut calldata: &[u8],
 ) -> InterpreterResult
 where
-    CTX: ContextTr<Cfg: Cfg<Spec = OpSpecId>>,
+    CTX: ContextTr<Cfg: Cfg<Spec = ZkSpecId>>,
 {
     let mut gas = Gas::new(gas_limit);
     let oog_error = || InterpreterResult::new(InstructionResult::OutOfGas, [].into(), Gas::new(0));
@@ -55,7 +56,7 @@ where
     selector.copy_from_slice(&calldata[..4]);
     match selector {
         s if s == SEND_TO_L1_SELECTOR => {
-            if ctx.tx().value() != U256::ZERO {
+            if call_value != U256::ZERO {
                 return error();
             }
             if is_static {
