@@ -201,15 +201,20 @@ where
         frame_result: &mut <<Self::Evm as EvmTr>::Frame as FrameTr>::FrameResult,
     ) -> Result<(), Self::Error> {
         reimburse_caller(evm.ctx(), frame_result.gas(), U256::ZERO)?;
-        
+
         let is_l1_to_l2_tx = evm.ctx().tx().is_l1_to_l2_tx();
         if is_l1_to_l2_tx {
             let caller = evm.ctx().tx().caller();
-            let refund_recipient = evm.ctx().tx().refund_recipient().expect("Refund recipient is missing for L1 -> L2 tx");
+            let refund_recipient = evm
+                .ctx()
+                .tx()
+                .refund_recipient()
+                .expect("Refund recipient is missing for L1 -> L2 tx");
 
             let basefee = evm.ctx().block().basefee() as u128;
             let effective_gas_price = evm.ctx().tx().effective_gas_price(basefee);
-            let spent_fee = U256::from(frame_result.gas().spent()) * U256::from(effective_gas_price);
+            let spent_fee =
+                U256::from(frame_result.gas().spent()) * U256::from(effective_gas_price);
             let mint = evm.ctx().tx().mint().unwrap_or_default();
             let value = evm.ctx().tx().value();
 
@@ -223,11 +228,9 @@ where
             };
 
             // // Return balance of not spend gas.
-            evm.ctx().journal_mut().transfer(
-                caller,
-                refund_recipient,
-                additional_refund,
-            )?;
+            evm.ctx()
+                .journal_mut()
+                .transfer(caller, refund_recipient, additional_refund)?;
         }
         Ok(())
     }
