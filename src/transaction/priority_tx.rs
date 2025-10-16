@@ -8,8 +8,7 @@ pub const UPGRADE_TRANSACTION_TYPE: u8 = 0x7E;
 pub const L1_PRIORITY_TRANSACTION_TYPE: u8 = 0x7f;
 
 /// Deposit transaction parts.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct L1ToL2TransactionParts {
     pub mint: Option<U256>,
     pub refund_recipient: Option<Address>,

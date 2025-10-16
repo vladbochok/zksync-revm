@@ -4,8 +4,19 @@ use revm::primitives::hardfork::{SpecId, UnknownHardfork};
 
 /// ZKsync OS spec id.
 #[repr(u8)]
-#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, PartialOrd, Ord, Default)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    Hash,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Default,
+    serde::Serialize,
+    serde::Deserialize,
+)]
 #[allow(non_camel_case_types)]
 pub enum ZkSpecId {
     #[default]

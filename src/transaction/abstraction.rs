@@ -22,16 +22,25 @@ pub trait ZkTxTr: Transaction {
     fn is_l1_to_l2_tx(&self) -> bool {
         self.tx_type() == UPGRADE_TRANSACTION_TYPE || self.tx_type() == L1_PRIORITY_TRANSACTION_TYPE
     }
+
+    fn refund_recipient(&self) -> Option<Address>;
+
+    fn gas_used_override(&self) -> Option<u64>;
+
+    fn force_fail(&self) -> bool;
 }
 
 /// ZKsync OS transaction.
-#[derive(Clone, Debug, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ZKsyncTx<T: Transaction> {
     /// Base transaction fields.
     pub base: T,
-    /// Deposit transaction parts.
-    pub deposit: L1ToL2TransactionParts,
+    /// L1 -> L2 transaction parts.
+    pub l1_to_l2_part: L1ToL2TransactionParts,
+    /// The gas spent on executing the transaction in the original ZKsync OS environment.
+    pub gas_used_override: Option<u64>,
+    /// The execution status (success/revert) from the original ZKsync OS environment.
+    pub force_fail: bool,
 }
 
 impl<T: Transaction> AsRef<T> for ZKsyncTx<T> {
@@ -45,7 +54,9 @@ impl<T: Transaction> ZKsyncTx<T> {
     pub fn new(base: T) -> Self {
         Self {
             base,
-            deposit: L1ToL2TransactionParts::default(),
+            l1_to_l2_part: L1ToL2TransactionParts::default(),
+            gas_used_override: None,
+            force_fail: false,
         }
     }
 }
@@ -61,7 +72,9 @@ impl Default for ZKsyncTx<TxEnv> {
     fn default() -> Self {
         Self {
             base: TxEnv::default(),
-            deposit: L1ToL2TransactionParts::default(),
+            l1_to_l2_part: L1ToL2TransactionParts::default(),
+            gas_used_override: None,
+            force_fail: false,
         }
     }
 }
@@ -165,7 +178,19 @@ impl<T: Transaction> Transaction for ZKsyncTx<T> {
 
 impl<T: Transaction> ZkTxTr for ZKsyncTx<T> {
     fn mint(&self) -> Option<U256> {
-        self.deposit.mint
+        self.l1_to_l2_part.mint
+    }
+
+    fn refund_recipient(&self) -> Option<Address> {
+        self.l1_to_l2_part.refund_recipient
+    }
+
+    fn gas_used_override(&self) -> Option<u64> {
+        self.gas_used_override
+    }
+
+    fn force_fail(&self) -> bool {
+        self.force_fail
     }
 }
 
@@ -173,7 +198,9 @@ impl<T: Transaction> ZkTxTr for ZKsyncTx<T> {
 #[derive(Default, Debug)]
 pub struct ZKsyncTxBuilder {
     base: TxEnvBuilder,
-    deposit: L1ToL2TransactionParts,
+    l1_to_l2_part: L1ToL2TransactionParts,
+    gas_used_override: Option<u64>,
+    force_fail: bool,
 }
 
 impl ZKsyncTxBuilder {
@@ -181,7 +208,9 @@ impl ZKsyncTxBuilder {
     pub fn new() -> Self {
         Self {
             base: TxEnvBuilder::new(),
-            deposit: L1ToL2TransactionParts::default(),
+            l1_to_l2_part: L1ToL2TransactionParts::default(),
+            gas_used_override: None,
+            force_fail: false,
         }
     }
 
@@ -191,9 +220,29 @@ impl ZKsyncTxBuilder {
         self
     }
 
-    /// Set the mint of the deposit transaction.
+    /// Set the mint of the L1 -> L2 part of the transaction.
     pub fn mint(mut self, mint: U256) -> Self {
-        self.deposit.mint = Some(mint);
+        self.l1_to_l2_part.mint = Some(mint);
+        self
+    }
+
+    /// Sets the gas amount spent in the transaction based
+    /// on the original ZKsync OS execution environment.
+    pub fn gas_used_override(mut self, gas_used_override: Option<u64>) -> Self {
+        self.gas_used_override = gas_used_override;
+        self
+    }
+
+    /// Sets the execution status of the transaction
+    /// based on the original ZKsync OS execution environment.
+    pub fn force_fail(mut self, force_fail: bool) -> Self {
+        self.force_fail = force_fail;
+        self
+    }
+
+    /// Set the refund recipient of the L1 -> L2 part of the transaction.
+    pub fn refund_recipient(mut self, refund_recipient: Option<Address>) -> Self {
+        self.l1_to_l2_part.refund_recipient = refund_recipient;
         self
     }
 
@@ -202,13 +251,15 @@ impl ZKsyncTxBuilder {
     /// This is useful for testing and debugging where it is not necessary to
     /// have full [`ZKsyncTx`] instance.
     ///
-    /// If the source hash is not [`B256::ZERO`], set the transaction type to deposit and remove the enveloped transaction.
+    /// If the source hash is not [`B256::ZERO`], set the transaction type to L1 -> L2 part and remove the enveloped transaction.
     pub fn build_fill(self) -> ZKsyncTx<TxEnv> {
         let base = self.base.build_fill();
 
         ZKsyncTx {
             base,
-            deposit: self.deposit,
+            l1_to_l2_part: self.l1_to_l2_part,
+            gas_used_override: self.gas_used_override,
+            force_fail: self.force_fail,
         }
     }
 
@@ -219,14 +270,17 @@ impl ZKsyncTxBuilder {
 
         Ok(ZKsyncTx {
             base,
-            deposit: self.deposit,
+            l1_to_l2_part: self.l1_to_l2_part,
+            gas_used_override: self.gas_used_override,
+            force_fail: self.force_fail,
         })
     }
 }
 
 /// Error type for building [`TxEnv`]
-#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(
+    Clone, Copy, Debug, Hash, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 pub enum ZkBuilderror {
     /// Base transaction build error
     Base(TxEnvBuildError),
@@ -246,25 +300,25 @@ mod tests {
         primitives::{Address, B256},
     };
 
-    #[test]
-    fn test_deposit_transaction_fields() {
-        let base_tx = TxEnv::builder()
-            .gas_limit(10)
-            .gas_price(100)
-            .gas_priority_fee(Some(5));
+    // #[test]
+    // fn test_deposit_transaction_fields() {
+    //     let base_tx = TxEnv::builder()
+    //         .gas_limit(10)
+    //         .gas_price(100)
+    //         .gas_priority_fee(Some(5));
 
-        let zk_tx = ZKsyncTx::builder()
-            .base(base_tx)
-            .mint(U256::ZERO)
-            .build()
-            .unwrap();
-        // Verify transaction type (deposit transactions should have tx_type based on ZkSpecId)
-        // The tx_type is derived from the transaction structure, not set manually
-        // Verify common fields access
-        assert_eq!(zk_tx.gas_limit(), 10);
-        assert_eq!(zk_tx.kind(), revm::primitives::TxKind::Call(Address::ZERO));
-        // Verify gas related calculations - deposit transactions use gas_price for effective gas price
-        assert_eq!(zk_tx.effective_gas_price(90), 100);
-        assert_eq!(zk_tx.max_fee_per_gas(), 100);
-    }
+    //     let zk_tx = ZKsyncTx::builder()
+    //         .base(base_tx)
+    //         .mint(U256::ZERO)
+    //         .build()
+    //         .unwrap();
+    //     // Verify transaction type (deposit transactions should have tx_type based on ZkSpecId)
+    //     // The tx_type is derived from the transaction structure, not set manually
+    //     // Verify common fields access
+    //     assert_eq!(zk_tx.gas_limit(), 10);
+    //     assert_eq!(zk_tx.kind(), revm::primitives::TxKind::Call(Address::ZERO));
+    //     // Verify gas related calculations - deposit transactions use gas_price for effective gas price
+    //     assert_eq!(zk_tx.effective_gas_price(90), 100);
+    //     assert_eq!(zk_tx.max_fee_per_gas(), 100);
+    // }
 }

@@ -1,11 +1,13 @@
 //!Handler related to ZKsync OS chain
+use std::boxed::Box;
+
 use crate::{
     ZkHaltReason,
     api::exec::ZkContextTr,
     transaction::{ZKsyncTxError, ZkTxTr},
 };
 use revm::{
-    context::LocalContextTr,
+    context::{LocalContextTr, result::InvalidTransaction},
     context_interface::{
         Block, Cfg, ContextTr, JournalTr, Transaction,
         context::ContextError,
@@ -19,8 +21,11 @@ use revm::{
         pre_execution::validate_account_nonce_and_code,
     },
     inspector::{Inspector, InspectorEvmTr, InspectorHandler},
-    interpreter::{interpreter::EthInterpreter, interpreter_action::FrameInit},
-    primitives::{U256, hardfork::SpecId},
+    interpreter::{
+        CallOutcome, Gas, InitialAndFloorGas, InstructionResult, InterpreterResult,
+        interpreter::EthInterpreter, interpreter_action::FrameInit,
+    },
+    primitives::U256,
 };
 
 /// ZKsync OS handler extends the [`Handler`] with ZKsync OS specific logic.
@@ -67,8 +72,6 @@ impl<EVM, ERROR, FRAME> Handler for ZKsyncHandler<EVM, ERROR, FRAME>
 where
     EVM: EvmTr<Context: ZkContextTr, Frame = FRAME>,
     ERROR: EvmTrError<EVM> + From<ZKsyncTxError> + FromStringError + IsTxError,
-    // TODO `FrameResult` should be a generic trait.
-    // TODO `FrameInit` should be a generic.
     FRAME: FrameTr<FrameResult = FrameResult, FrameInit = FrameInit>,
 {
     type Evm = EVM;
@@ -76,8 +79,50 @@ where
     type HaltReason = ZkHaltReason;
 
     fn validate_env(&self, evm: &mut Self::Evm) -> Result<(), Self::Error> {
+        // Do not perform any additional validation for L1 -> L2 transactions, they are pre-verified on Settlement Layer.
+        let ctx = evm.ctx();
+        let tx = ctx.tx();
+        if tx.is_l1_to_l2_tx() {
+            return Ok(());
+        }
+
         // Do not perform any extra validation for L1 -> L2 transactions, they are pre-verified on L1.
         self.mainnet.validate_env(evm)
+    }
+
+    #[inline]
+    fn post_execution(
+        &self,
+        evm: &mut Self::Evm,
+        exec_result: &mut FrameResult,
+        init_and_floor_gas: InitialAndFloorGas,
+        eip7702_gas_refund: i64,
+    ) -> Result<(), Self::Error> {
+        if let Some(gas_used_override) = evm.ctx().tx().gas_used_override() {
+            let gas_limit = evm.ctx().tx().gas_limit();
+            // Just in case use at most `gas_limit` gas to prevent the underflow
+            let used = gas_used_override.min(gas_limit);
+            let unused = gas_limit - used;
+
+            // Rewrite the Gas object to match ZKsync OS usage.
+            let gas = exec_result.gas_mut();
+            *gas = Gas::new_spent(gas_limit);
+            gas.erase_cost(unused);
+            // IMPORTANT: ignore EVM-native refunds: (do NOT call `gas.record_refund(...)` here)
+            //    self.refund(evm, exec_result, eip7702_gas_refund);  // <-- intentionally NOT called
+
+            // Reimburse sender and reward beneficiary using the rewritten Gas.
+            self.reimburse_caller(evm, exec_result)?;
+            self.reward_beneficiary(evm, exec_result)?;
+        } else {
+            // Vanilla path: keep default EVM accounting
+            self.refund(evm, exec_result, eip7702_gas_refund);
+            self.eip7623_check_gas_floor(evm, exec_result, init_and_floor_gas);
+            self.reimburse_caller(evm, exec_result)?;
+            self.reward_beneficiary(evm, exec_result)?;
+        }
+
+        Ok(())
     }
 
     fn validate_against_state_and_deduct_caller(
@@ -89,8 +134,6 @@ where
         let basefee = ctx.block().basefee() as u128;
         let blob_price = ctx.block().blob_gasprice().unwrap_or_default();
         let is_l1_to_l2_tx = ctx.tx().is_l1_to_l2_tx();
-        let spec = ctx.cfg().spec();
-        let block_number = ctx.block().number();
         let is_eip3607_disabled = ctx.cfg().is_eip3607_disabled();
         let is_nonce_check_disabled = ctx.cfg().is_nonce_check_disabled();
 
@@ -113,11 +156,28 @@ where
         // old balance is journaled before mint is incremented.
         let old_balance = caller_account.info.balance;
 
-        let new_balance = caller_account
-            .info
-            .balance
-            .saturating_add(U256::from(mint))
-            .max(tx.value());
+        let mut new_balance = caller_account.info.balance.saturating_add(U256::from(mint));
+
+        let max_balance_spending = tx.max_balance_spending()?;
+
+        if !is_l1_to_l2_tx && max_balance_spending > new_balance {
+            // skip max balance check for deposit transactions.
+            // this check for deposit was skipped previously in `validate_tx_against_state` function
+            return Err(InvalidTransaction::LackOfFundForMaxFee {
+                fee: Box::new(max_balance_spending),
+                balance: Box::new(new_balance),
+            }
+            .into());
+        }
+
+        let effective_balance_spending = tx
+            .effective_balance_spending(basefee, blob_price)
+            .expect("effective balance is always smaller than max balance so it can't overflow");
+
+        // subtracting max balance spending with value that is going to be deducted later in the call.
+        let gas_balance_spending = effective_balance_spending - tx.value();
+
+        new_balance = new_balance.saturating_sub(gas_balance_spending);
 
         // Touch account so we know it is changed.
         caller_account.mark_touch();
@@ -135,43 +195,41 @@ where
         Ok(())
     }
 
-    fn last_frame_result(
-        &mut self,
-        evm: &mut Self::Evm,
-        frame_result: &mut <<Self::Evm as EvmTr>::Frame as FrameTr>::FrameResult,
-    ) -> Result<(), Self::Error> {
-        Ok(())
-    }
-
     fn reimburse_caller(
         &self,
         evm: &mut Self::Evm,
         frame_result: &mut <<Self::Evm as EvmTr>::Frame as FrameTr>::FrameResult,
     ) -> Result<(), Self::Error> {
-        reimburse_caller(evm.ctx(), frame_result.gas(), U256::ZERO).map_err(From::from)
-    }
-
-    fn refund(
-        &self,
-        evm: &mut Self::Evm,
-        frame_result: &mut <<Self::Evm as EvmTr>::Frame as FrameTr>::FrameResult,
-        eip7702_refund: i64,
-    ) {
-        frame_result.gas_mut().record_refund(eip7702_refund);
-
+        reimburse_caller(evm.ctx(), frame_result.gas(), U256::ZERO)?;
+        
         let is_l1_to_l2_tx = evm.ctx().tx().is_l1_to_l2_tx();
+        if is_l1_to_l2_tx {
+            let caller = evm.ctx().tx().caller();
+            let refund_recipient = evm.ctx().tx().refund_recipient().expect("Refund recipient is missing for L1 -> L2 tx");
 
-        // Prior to Regolith, deposit transactions did not receive gas refunds.
-        let is_gas_refund_disabled = is_l1_to_l2_tx;
-        if !is_gas_refund_disabled {
-            frame_result.gas_mut().set_final_refund(
-                evm.ctx()
-                    .cfg()
-                    .spec()
-                    .into_eth_spec()
-                    .is_enabled_in(SpecId::LONDON),
-            );
+            let basefee = evm.ctx().block().basefee() as u128;
+            let effective_gas_price = evm.ctx().tx().effective_gas_price(basefee);
+            let spent_fee = U256::from(frame_result.gas().spent()) * U256::from(effective_gas_price);
+            let mint = evm.ctx().tx().mint().unwrap_or_default();
+            let value = evm.ctx().tx().value();
+
+            // Did the call succeed?
+            let is_success = frame_result.interpreter_result().result.is_ok();
+
+            let additional_refund = if is_success {
+                mint - value - spent_fee
+            } else {
+                mint - spent_fee
+            };
+
+            // // Return balance of not spend gas.
+            evm.ctx().journal_mut().transfer(
+                caller,
+                refund_recipient,
+                additional_refund,
+            )?;
         }
+        Ok(())
     }
 
     fn reward_beneficiary(
@@ -179,20 +237,15 @@ where
         evm: &mut Self::Evm,
         frame_result: &mut <<Self::Evm as EvmTr>::Frame as FrameTr>::FrameResult,
     ) -> Result<(), Self::Error> {
-        let is_deposit = evm.ctx().tx().is_l1_to_l2_tx();
-
-        // Transfer fee to coinbase/beneficiary.
-        if is_deposit {
-            return Ok(());
-        }
-
-        self.mainnet.reward_beneficiary(evm, frame_result)?;
+        let beneficiary = evm.ctx().block().beneficiary();
         let basefee = evm.ctx().block().basefee() as u128;
+        let effective_gas_price = evm.ctx().tx().effective_gas_price(basefee);
 
-        // If the transaction is not a deposit transaction, fees are paid out
-        // to both the Base Fee Vault as well as the L1 Fee Vault.
-        let ctx = evm.ctx();
-        let spec = ctx.cfg().spec();
+        // reward beneficiary
+        evm.ctx().journal_mut().balance_incr(
+            beneficiary,
+            U256::from(effective_gas_price * frame_result.gas().used() as u128),
+        )?;
 
         Ok(())
     }
@@ -218,68 +271,46 @@ where
         Ok(exec_result)
     }
 
-    fn catch_error(
-        &self,
+    fn run_without_catch_error(
+        &mut self,
         evm: &mut Self::Evm,
-        error: Self::Error,
     ) -> Result<ExecutionResult<Self::HaltReason>, Self::Error> {
-        let is_deposit = evm.ctx().tx().is_l1_to_l2_tx();
-        let output = if error.is_tx_error() && is_deposit {
-            let ctx = evm.ctx();
-            // let spec = ctx.cfg().spec();
-            let tx = ctx.tx();
-            let caller = tx.caller();
-            let mint = tx.mint();
-            let gas_limit = tx.gas_limit();
+        let init_and_floor_gas = self.validate(evm)?;
+        let eip7702_refund = self.pre_execution(evm)? as i64;
 
-            // discard all changes of this transaction
-            evm.ctx().journal_mut().discard_tx();
+        // === forced-fail short-circuit ===
+        let mut exec_result = if evm.ctx().tx().force_fail() {
+            // Synthesize a top-level REVERT frame result (no state changes).
+            // 1) Make an InterpreterResult with REVERT + returndata.
+            let ir = InterpreterResult::new(
+                InstructionResult::Revert,
+                Default::default(),
+                Gas::new_spent(0),
+            );
+            // 2) Wrap it as a CallOutcome; memory range is irrelevant here.
+            let mut fr = FrameResult::Call(CallOutcome::new(ir, 0..0));
 
-            // If the transaction is a deposit transaction and it failed
-            // for any reason, the caller nonce must be bumped, and the
-            // gas reported must be altered depending on the Hardfork. This is
-            // also returned as a special Halt variant so that consumers can more
-            // easily distinguish between a failed deposit and a failed
-            // normal transaction.
+            let gas_limit = evm.ctx().tx().gas_limit();
+            let gas_used = evm.ctx().tx().gas_used_override().unwrap_or(gas_limit);
 
-            // Increment sender nonce and account balance for the mint amount. Deposits
-            // always persist the mint amount, even if the transaction fails.
-            let acc: &mut revm::state::Account = evm.ctx().journal_mut().load_account(caller)?.data;
+            // 3) Set gas to match your ZK usage now (limit – unused).
+            let used = gas_used.min(gas_limit);
+            let unused = gas_limit - used;
+            let gas = fr.gas_mut();
+            *gas = Gas::new_spent(gas_limit);
+            gas.erase_cost(unused);
 
-            let old_balance = acc.info.balance;
+            // Ensure gas object is initialized the same way a normal top-level return would do.
+            // last_frame_result() sets `Gas::new_spent(gas_limit)` and handles "remaining" & refund flags.
+            self.last_frame_result(evm, &mut fr)?;
 
-            // decrement transaction id as it was incremented when we discarded the tx.
-            acc.transaction_id -= 1;
-            acc.info.nonce = acc.info.nonce.saturating_add(1);
-            acc.info.balance = acc
-                .info
-                .balance
-                .saturating_add(U256::from(mint.unwrap_or_default()));
-            acc.mark_touch();
-
-            // add journal entry for accounts
-            evm.ctx()
-                .journal_mut()
-                .caller_accounting_journal_entry(caller, old_balance, true);
-
-            // The gas used of a failed deposit post-regolith is the gas
-            // limit of the transaction. pre-regolith, it is the gas limit
-            // of the transaction for non system transactions and 0 for system
-            // transactions.
-            let gas_used = gas_limit;
-            // clear the journal
-            Ok(ExecutionResult::Halt {
-                reason: ZkHaltReason::FailedDeposit,
-                gas_used,
-            })
+            fr
         } else {
-            Err(error)
+            self.execution(evm, &init_and_floor_gas)?
         };
-        // do the cleanup
-        evm.ctx().local_mut().clear();
-        evm.frame_stack().clear();
 
-        output
+        self.post_execution(evm, &mut exec_result, init_and_floor_gas, eip7702_refund)?;
+        self.execution_result(evm, exec_result)
     }
 }
 

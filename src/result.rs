@@ -2,8 +2,7 @@
 use revm::context_interface::result::HaltReason;
 
 /// ZKsync OS halt reason.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum ZkHaltReason {
     /// Base halt reason.
     Base(HaltReason),
